@@ -75,6 +75,12 @@ void testLinkedList() {
 
 	checkInt(linked_length(&list), 2, "list length");
 
+	link = list.first;
+	while(link != NULL) {
+		checkInt(link->inUse, 0, "raw inUse");
+		link = link->next;
+	}
+
 	linked_destroy(&list);
 }
 

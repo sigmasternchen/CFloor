@@ -73,18 +73,19 @@ void linked_free(link_t* link) {
 void linked_release(link_t* link) {
 	link->inUse--;
 
-	if (link->unlinked && link->inUse == 0) {
+	if (link->unlinked && (link->inUse == 0)) {
 		linked_free(link);
 	}
 }
 
 link_t* linked_next(link_t* link) {
+	link_t* next = link->next;
 	linked_release(link);
 
-	if (link->next == NULL) {
+	if (next == NULL) {
 		return NULL;
 	}
-	link = link->next;
+	link = next;
 
 	link->inUse++;
 
@@ -194,7 +195,7 @@ int linked_unlink(link_t* link) {
 }
 
 void linked_destroy(linkedList_t* list) {
-	link_t* link = linked_first(list);
+	link_t* link = list->first;
 
 	while(link != NULL) {
 		link_t* next = link->next;

@@ -21,7 +21,7 @@ typedef struct link {
 } link_t;
 
 linkedList_t linked_create();
-size_t linked_push(linkedList_t* list, void* data);
+size_t linked_push(linkedList_t* list, const void* data);
 link_t* linked_first(linkedList_t* list);
 link_t* linked_next(link_t* link);
 size_t linked_length(linkedList_t* list);

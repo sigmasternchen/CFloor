@@ -9,6 +9,8 @@ all: $(BIN_NAME)
 
 test: obj/test.o obj/networking.o obj/linked.o
 	$(LD) $(LDFLAGS) -o $@ $^
+valgrind: test
+	valgrind --leak-check=yes ./test
 
 obj/test.o: src/networking.h
 obj/networking.o: src/networking.h src/headers.h

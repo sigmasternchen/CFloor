@@ -12,12 +12,12 @@ linkedList_t linked_create() {
 	return list;
 }
 
-size_t linked_push(linkedList_t* list, void* data) {
+size_t linked_push(linkedList_t* list, const void* data) {
 	link_t* new = malloc(sizeof (link_t));
 	if (new == NULL)
 		return -1;
 
-	new->data = data;
+	new->data = (void*) data;
 	sem_init(&(new->modify_sem), 0, 1);
 	new->inUse = 0;
 	new->list = list;

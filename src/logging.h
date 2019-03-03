@@ -2,6 +2,7 @@
 #define LOGGING_H
 
 #include <stdarg.h>
+#include <stdio.h>
 
 enum loglevel {
 	DEBUG, VERBOSE, INFO, WARN, ERROR, CRITICAL

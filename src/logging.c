@@ -7,6 +7,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <assert.h>
+#include <semaphore.h>
 
 #include "logging.h"
 
@@ -18,6 +19,7 @@ struct {
 	FILE* file;
 	enum loglevel loglevel;
 	bool color;
+	sem_t write_sem;
 } logger[MAX_LOGGER];
 int loggerCount = 0;
 
@@ -41,7 +43,8 @@ void setLogging(FILE* file, enum loglevel loglevel, bool color) {
 	if (!found) {
 		logger[loggerCount].file = file;
 		logger[loggerCount].loglevel = loglevel;
-		logger[loggerCount].color = color;
+		logger[loggerCount].color = color;		
+		sem_init(&(logger[loggerCount].write_sem), 0, 1);
 		loggerCount++;
 	}
 }
@@ -205,12 +208,16 @@ void vlogging(enum loglevel loglevel, const char* format, va_list argptr) {
 		if (loglevel < logger[i].loglevel)
 			continue;
 
+		sem_wait(&(logger[i].write_sem));
+
 		char* loglevelString = getLoglevelString(loglevel, logger[i].color);
 		fprintf(logger[i].file, "%s %s ", timestamp, loglevelString);
 
 		vfprintf(logger[i].file, format, argptr);
 
 		fprintf(logger[i].file, "\n");
+
+		sem_post(&(logger[i].write_sem));
 	}
 	
 	free(timestamp);

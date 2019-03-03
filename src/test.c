@@ -2,12 +2,20 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/select.h>
+#include <unistd.h>
+#include <poll.h>
+#include <fcntl.h>
+#include <time.h>
 
 #include "networking.h"
 #include "linked.h"
 #include "logging.h"
+#include "signals.h"
 
 bool global = true;
+bool overall = true;
 
 void checkBool(bool ok, const char* check) {
 	const char* result;
@@ -31,6 +39,10 @@ void checkVoid(const void* value, const void* compare, const char* check) {
 }
 void checkNull(void* value, const char* check) {
 	checkBool(value != NULL, check);
+}
+
+void showError() {
+	fprintf(stderr, "Error: %s\n", strerror(errno));
 }
 
 void testLinkedList() {
@@ -85,20 +97,80 @@ void testLinkedList() {
 	linked_destroy(&list);
 }
 
+bool hasData(int fd) {
+	int tmp = poll(&(struct pollfd){ .fd = fd, .events = POLLIN }, 1, 10);
+
+	return tmp == 1;
+}
+
+bool handlerHasTriggered = false;
 void criticalHandler() {
 	printf("This is the critical handler.\n");
 	printBacktrace();
 }
 void testLogging() {
+	int pipefd[2];
+	if (pipe(pipefd) < 0) {
+		showError();
+		return;
+	}
+
+	FILE* pipeWrite = fdopen(pipefd[1], "w");
+	if (pipeWrite == NULL) {
+		showError();
+		return;
+	}
+	setbuf(pipeWrite, NULL);
+	FILE* pipeRead = fdopen(pipefd[0], "r");
+	if (pipeRead == NULL) {
+		showError();
+		return;
+	}
+	setbuf(pipeRead, NULL);
+
+	setLogging(pipeWrite, DEFAULT_LOGLEVEL, false);
 	setLogging(stderr, DEFAULT_LOGLEVEL, true);
 
 	info("This info should not be displayed.");
+	checkBool(!hasData(pipefd[0]), "no data read (info)");
+
 	warn("This warning should be displayed.");
+	checkBool(hasData(pipefd[0]), "data read (warn)");
+	fflush(pipeRead);
+
 	error("This error should be displayed.");
+	checkBool(hasData(pipefd[0]), "data read (error)");
+	fflush(pipeRead);
 
 	setCriticalHandler(&criticalHandler);
 
 	critical("This critical should be displayed.");
+	checkBool(hasData(pipefd[0]), "data read (crititcal)");
+	fflush(pipeRead);
+
+	fclose(pipeWrite);
+	fclose(pipeRead);
+}
+
+volatile int counter = 0;
+void timerThread() {
+	counter++;
+}
+void testTimers() {
+	timer_t timer = timer_createThreadTimer(&timerThread);
+	if (timer == NULL) {
+		showError();
+		return;
+	}
+	if (timer_startInterval(timer, 10) < 0) {
+		showError();
+		return;
+	}
+	sleep(1);
+	timer_stop(timer);
+	timer_destroy(timer);
+
+	checkInt(counter, 100, "interval count");
 }
 
 handler_t handlerGetter(struct metaData metaData, const char* host) {
@@ -115,24 +187,21 @@ void testNetworking() {
 	});
 }
 
+void test(const char* name, void (*testFunction)()) {
+	printf("%s\n", name);
+	printf("%.*s\n", (int) strlen(name), 
+		"===================================");
+	testFunction();
+	if (!global)
+		overall = false;
+	printf("%s: %s\n\n", name, global ? "OK" : "FAILED");
+	global = true;
+}
+
 int main(int argc, char** argv) {
-	bool overall = true;
-
-	printf("linked lists\n");
-	printf("============\n\n");
-	testLinkedList();
-	if (!global)
-		overall = false;
-	printf("linked lists: %s\n\n", global ? "OK" : "FAILED");
-	global = true;
-
-	printf("logging\n");
-	printf("============\n\n");
-	testLogging();
-	if (!global)
-		overall = false;
-	printf("logging: %s\n\n", global ? "OK" : "FAILED");
-	global = true;
+	test("linked lists", &testLinkedList);
+	test("logging", &testLogging);
+	test("signals", &testTimers);
 
 
 	printf("\nOverall: %s\n", overall ? "OK" : "FAILED");

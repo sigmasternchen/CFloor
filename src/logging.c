@@ -1,0 +1,269 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <string.h>
+#include <errno.h>
+#include <stdarg.h>
+#include <sys/time.h>
+#include <time.h>
+#include <assert.h>
+
+#include "logging.h"
+
+#ifdef BACKTRACE
+#include <execinfo.h>
+#endif
+
+struct {
+	FILE* file;
+	enum loglevel loglevel;
+	bool color;
+} logger[MAX_LOGGER];
+int loggerCount = 0;
+
+void (*_criticalHandler)() = NULL;
+
+void setLogging(FILE* file, enum loglevel loglevel, bool color) {
+	if (loggerCount == MAX_LOGGER - 1) {
+		return;
+	}
+
+	bool found = false;
+	for (int i = 0; i < loggerCount; i++) {
+		if ((logger[i].file == file)) {
+			found = true;
+			logger[i].loglevel = loglevel;
+			logger[i].color = color;
+			break;
+		}
+	}
+
+	if (!found) {
+		logger[loggerCount].file = file;
+		logger[loggerCount].loglevel = loglevel;
+		logger[loggerCount].color = color;
+		loggerCount++;
+	}
+}
+
+void setCriticalHandler(void (*handler)()) {
+	_criticalHandler = handler;
+}
+
+void callCritical() {
+	if (_criticalHandler != NULL)
+		_criticalHandler();
+}
+
+#define BACKTRACE_BUFFER_SIZE 16
+void printBacktrace() {
+	#ifdef BACKTRACE
+
+	void* buffer[BACKTRACE_BUFFER_SIZE];
+	char** strings;
+	int entries = backtrace(buffer, BACKTRACE_BUFFER_SIZE);
+	strings = backtrace_symbols(buffer, entries);
+	
+	if (strings == NULL) {
+		fprintf(stderr, "Error while backtracing: %s\n", strerror(errno));
+		return;
+	}
+
+	int tmp = (entries < BACKTRACE_BUFFER_SIZE) ? entries : entries - 1;
+
+	// from 1 to ignore printBacktrace
+	for (int i = 1; i < tmp; i++) {
+		fprintf(stderr, "  at %s\n", strings[i]);
+	}
+	if (tmp < entries) {
+		fprintf(stderr, "  ...\n");
+	}
+
+	#else
+
+	fprintf(stderr, "Error: Not compiled with backtrace support.\n");
+
+	#endif
+}
+
+char* getTimestamp() {
+	#define MSEC_LENGTH (3)
+	#define TIME_LENGTH (4 + 1 + 2 + 1 + 2 + 1 + 2 + 1 + 2 + 1 + 2 + 1 + MSEC_LENGTH)
+	char* result = malloc(TIME_LENGTH + 1);
+	if (result == NULL) {
+		fprintf(stderr, "\nDEVASTATING: Couldn't malloc for log time.\n");
+		callCritical();
+		exit(EXIT_DEVASTATING);
+	}
+
+
+	int millisec;
+	struct tm* tm_info;
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+
+	millisec = (int) (tv.tv_usec / 1000.0);
+	if (millisec >= 1000) {
+		millisec -=1000;
+		tv.tv_sec++;
+	}
+
+	tm_info = localtime(&tv.tv_sec);
+
+	strftime(result, 26, "%Y-%m-%dT%H:%M:%S", tm_info);
+
+	char* msecBuffer = malloc(1 + MSEC_LENGTH + 1);
+
+	if (msecBuffer == NULL) {
+		fprintf(stderr, "\nDEVASTATING: Couldn't malloc for log time.\n");
+		callCritical();
+		exit(EXIT_DEVASTATING);
+	}
+
+	snprintf(msecBuffer, 1 + MSEC_LENGTH + 1, ".%03d", millisec);
+
+	strncat(result, msecBuffer, TIME_LENGTH + 1);
+
+	free(msecBuffer);
+
+	return result;
+}
+
+char* getLoglevelString(enum loglevel loglevel, bool color) {
+	#define DEBUG_STRING    "[DEBUG]"
+	#define VERBOSE_STRING  "[VERBOSE]"
+	#define INFO_STRING     "[INFO]"
+	#define WARN_STRING     "[WARNING]"
+	#define ERROR_STRING    "[ERROR]"
+	#define CRITICAL_STRING "[CRITICAL]"
+	#define UNKNOWN_STRING  "[UNKNOWN]"
+
+	#define DEBUG_COLOR     "\033[37m"
+	#define VERBOSE_COLOR   "\033[35m"
+	#define INFO_COLOR      "\033[36m"
+	#define WARN_COLOR      "\033[33m"
+	#define ERROR_COLOR     "\033[31m"
+	#define CRITICAL_COLOR  "\033[41m\033[30m"
+	#define UNKNOWN_COLOR    "\033[41m\033[30m"
+
+	#define COLOR_END       "\033[0m"
+
+	switch(loglevel) {
+		case DEBUG:
+			if (color)
+				return DEBUG_COLOR DEBUG_STRING COLOR_END;
+			else
+				return DEBUG_STRING;
+			break;
+		case VERBOSE:
+			if (color)
+				return VERBOSE_COLOR VERBOSE_STRING COLOR_END;
+			else
+				return VERBOSE_STRING;
+			break;
+		case INFO:
+			if (color)
+				return INFO_COLOR INFO_STRING COLOR_END;
+			else
+				return INFO_STRING;
+			break;
+		case WARN:
+			if (color)
+				return WARN_COLOR WARN_STRING COLOR_END;
+			else
+				return WARN_STRING;
+			break;
+		case ERROR:
+			if (color)
+				return ERROR_COLOR ERROR_STRING COLOR_END;
+			else
+				return ERROR_STRING;
+			break;
+		case CRITICAL:
+			if (color)
+				return CRITICAL_COLOR CRITICAL_STRING COLOR_END;
+			else
+				return CRITICAL_STRING;
+			break;
+		default:
+			if (color)
+				return UNKNOWN_COLOR UNKNOWN_STRING COLOR_END;
+			else
+				return UNKNOWN_STRING;
+			break;
+	}
+
+	assert(false);
+	return NULL;
+}
+
+void vlogging(enum loglevel loglevel, const char* format, va_list argptr) {
+	char* timestamp = getTimestamp();
+
+	for(int i = 0; i < loggerCount; i++) {
+		if (loglevel < logger[i].loglevel)
+			continue;
+
+		char* loglevelString = getLoglevelString(loglevel, logger[i].color);
+		fprintf(logger[i].file, "%s %s ", timestamp, loglevelString);
+
+		vfprintf(logger[i].file, format, argptr);
+
+		fprintf(logger[i].file, "\n");
+	}
+	
+	free(timestamp);
+
+	if (loglevel == CRITICAL)
+		callCritical();
+}
+
+void logging(enum loglevel loglevel, const char* format, ...) {
+	va_list argptr;
+	va_start(argptr, format);
+	vlogging(loglevel, format, argptr);
+	va_end(argptr);
+}
+
+void debug(const char* format, ...) {
+	va_list argptr;
+	va_start(argptr, format);
+	vlogging(DEBUG, format, argptr);
+	va_end(argptr);
+}
+
+void verbose(const char* format, ...) {
+	va_list argptr;
+	va_start(argptr, format);
+	vlogging(VERBOSE, format, argptr);
+	va_end(argptr);
+}
+
+void info(const char* format, ...) {
+	va_list argptr;
+	va_start(argptr, format);
+	vlogging(INFO, format, argptr);
+	va_end(argptr);
+}
+
+void warn(const char* format, ...) {
+	va_list argptr;
+	va_start(argptr, format);
+	vlogging(WARN, format, argptr);
+	va_end(argptr);
+}
+
+void error(const char* format, ...) {
+	va_list argptr;
+	va_start(argptr, format);
+	vlogging(ERROR, format, argptr);
+	va_end(argptr);
+}
+
+void critical(const char* format, ...) {
+	va_list argptr;
+	va_start(argptr, format);
+	vlogging(CRITICAL, format, argptr);
+	va_end(argptr);
+}

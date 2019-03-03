@@ -5,6 +5,7 @@
 
 #include "networking.h"
 #include "linked.h"
+#include "logging.h"
 
 bool global = true;
 
@@ -84,6 +85,22 @@ void testLinkedList() {
 	linked_destroy(&list);
 }
 
+void criticalHandler() {
+	printf("This is the critical handler.\n");
+	printBacktrace();
+}
+void testLogging() {
+	setLogging(stderr, DEFAULT_LOGLEVEL, true);
+
+	info("This info should not be displayed.");
+	warn("This warning should be displayed.");
+	error("This error should be displayed.");
+
+	setCriticalHandler(&criticalHandler);
+
+	critical("This critical should be displayed.");
+}
+
 handler_t handlerGetter(struct metaData metaData, const char* host) {
 	return NULL;
 }
@@ -107,6 +124,14 @@ int main(int argc, char** argv) {
 	if (!global)
 		overall = false;
 	printf("linked lists: %s\n\n", global ? "OK" : "FAILED");
+	global = true;
+
+	printf("logging\n");
+	printf("============\n\n");
+	testLogging();
+	if (!global)
+		overall = false;
+	printf("logging: %s\n\n", global ? "OK" : "FAILED");
 	global = true;
 
 

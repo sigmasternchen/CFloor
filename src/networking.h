@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <sys/time.h>
 #include <pthread.h>
+#include <signal.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -43,6 +44,7 @@ struct connection {
 	enum connectionState state;
 	struct sockaddr_in client;
 	struct bind* bind;
+	volatile sig_atomic_t inUse;
 	int fd;
 	struct metaData metaData;
 	struct headers headers;
@@ -68,6 +70,8 @@ struct networkingConfig {
 #define CLEANUP_INTERVAl (1000)
 
 #define LISTEN_BACKLOG (1024)
+
+#define TIMING_CLOCK CLOCK_REALTIME
 
 void initNetworking(struct networkingConfig networkingConfig);
 

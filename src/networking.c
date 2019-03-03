@@ -19,6 +19,7 @@ struct networkingConfig networkingConfig;
 
 linkedList_t connectionList;
 
+linkedList_t connectionsToFree;
 void cleanup() {
 	signal_block_all();
 
@@ -29,19 +30,69 @@ void cleanup() {
 
 	while(link != NULL) {
 		length++;
+
+		struct timespec time;
+		// no need to check result; none of the errors can happen
+		clock_gettime(TIMING_CLOCK, &time);
+
+		bool unlink = false;
+
 		struct connection* connection = link->data;
-		switch(connection->state) {
-			case OPENED:
-				break;
-			default:
-				unlinked++;
-				linked_unlink(link);
+		long diffms = (time.tv_sec - connection->timing.lastUpdate.tv_sec) * 1000 + (time.tv_nsec / 1000000 - connection->timing.lastUpdate.tv_nsec / 1000000);
+
+		if (connection->state != OPENED) {
+			unlink = true;
+		} else if (diffms > networkingConfig.connectionTimeout) {
+			unlink = true;
+			linked_push(&connectionsToFree, connection);
+		}
+
+		if (unlink) {	
+			unlinked++;
+			linked_unlink(link);
 		}
 
 		link = linked_next(link);
 	}
 
-	info("cleanup: %d/%d unlinked", length, unlinked);
+	info("cleanup: %d/%d unlinked", unlinked, length);
+
+	link = linked_first(&connectionsToFree);
+
+	length = 0;
+	int freed = 0;
+	while(link != NULL) {
+		length++;
+		struct connection* connection = link->data;
+		if (connection->inUse == 0) {
+			freed++;
+			if (connection->metaData.path != NULL)
+				free(connection->metaData.path);
+			if (connection->metaData.queryString != NULL)
+				free(connection->metaData.queryString);
+			if (connection->currentHeader != NULL)
+				free(connection->currentHeader);
+
+			for (int i = 0; i < connection->headers.number; i++) {
+				if (connection->headers.headers[i].key != NULL)
+					free(connection->headers.headers[i].key);
+				if (connection->headers.headers[i].value != NULL)
+					free(connection->headers.headers[i].value);
+			}
+			if (connection->headers.headers != NULL)
+				free(connection->headers.headers);
+
+			close(connection->fd);
+
+			free(connection);
+
+			linked_unlink(link);
+		}
+
+		link = linked_next(link);
+	}
+
+	info("cleanup: %d/%d freed", freed, length);
 }
 
 
@@ -64,7 +115,7 @@ void updateTiming(struct connection* connection, bool stateChange) {
 	struct timespec time;
 
 	// no need to check result; none of the errors can happen
-	clock_gettime(CLOCK_REALTIME, &time);
+	clock_gettime(TIMING_CLOCK, &time);
 
 	connection->timing.lastUpdate = time;
 	if (stateChange)	
@@ -181,6 +232,7 @@ void* listenThread(void* _bind) {
 		connection->currentHeaderLength = 0;
 		connection->currentHeader = NULL;
 		connection->handler = NULL;
+		connection->inUse = 0;
 		updateTiming(connection, false);
 
 		linked_push(&connectionList, connection);
@@ -191,6 +243,7 @@ void initNetworking(struct networkingConfig _networkingConfig) {
 	networkingConfig = _networkingConfig;
 
 	connectionList = linked_create();
+	connectionsToFree = linked_create();
 
 	timer_t timer = timer_createThreadTimer(&cleanup);
 	if (timer == NULL) {

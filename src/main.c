@@ -30,7 +30,6 @@ int main(int argc, char** argv) {
 		},
 		.getHandler = &handlerGetter
 	};
-	
 
 	initNetworking(config);
 

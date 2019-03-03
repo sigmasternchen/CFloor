@@ -1,19 +1,21 @@
 CC       = gcc
 CFLAGS   = -Wall -Wpedantic
 LD       = gcc
-LDFLAGS  =
+LDFLAGS  = -lpthread -lrt
 
 BIN_NAME = cfloor
 
 all: $(BIN_NAME)
 
-test: obj/test.o obj/networking.o
-	$(LD) -o $@ $^
+test: obj/test.o obj/networking.o obj/linked.o
+	$(LD) $(LDFLAGS) -o $@ $^
 
+obj/test.o: src/networking.h
 obj/networking.o: src/networking.h src/headers.h
+obj/linked.o: src/linked.h
 
 obj/%.o: src/%.c obj
-	$(CC) -c -o $@ $<
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 obj:
 	@mkdir -p obj

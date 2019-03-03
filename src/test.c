@@ -6,7 +6,7 @@ handler_t handlerGetter(struct metaData metaData, const char* host) {
 	return NULL;
 }
 
-int main(int argc, char* argv) {
+int main(int argc, char** argv) {
 	initNetworking((struct networkingConfig) {
 		.connectionTimeout = 30000,
 		.defaultResponse = {

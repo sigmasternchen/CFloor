@@ -70,7 +70,7 @@ void linked_free(link_t* link) {
 	free(link);
 }
 
-void linked_unlock(link_t* link) {
+void linked_release(link_t* link) {
 	link->inUse--;
 
 	if (link->unlinked && link->inUse == 0) {
@@ -79,7 +79,7 @@ void linked_unlock(link_t* link) {
 }
 
 link_t* linked_next(link_t* link) {
-	linked_unlock(link);
+	linked_release(link);
 
 	if (link->next == NULL) {
 		return NULL;

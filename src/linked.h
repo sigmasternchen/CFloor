@@ -25,7 +25,7 @@ size_t linked_push(linkedList_t* list, void* data);
 link_t* linked_first(linkedList_t* list);
 link_t* linked_next(link_t* link);
 size_t linked_length(linkedList_t* list);
-void linked_unlock(link_t* link);
+void linked_release(link_t* link);
 link_t* linked_get(linkedList_t* list, size_t index);
 int linked_unlink(link_t* link);
 void linked_destroy(linkedList_t* list);

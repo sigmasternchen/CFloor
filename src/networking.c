@@ -210,8 +210,8 @@ void initNetworking(struct networkingConfig _networkingConfig) {
 	signal_block(SIGIO);
 
 	for(int i = 0; i < networkingConfig.binds.number; i++) {
-		struct bind bind = networkingConfig.binds.binds[i];
-		if (pthread_create(&(bind._private.threadId), NULL, &listenThread, &bind) != 0) {
+		struct bind* bind = &(networkingConfig.binds.binds[i]);
+		if (pthread_create(&(bind->_private.threadId), NULL, &listenThread, bind) != 0) {
 			critical("networking: Couldn't start data thread.");
 			return;
 		}

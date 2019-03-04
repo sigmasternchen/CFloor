@@ -3,6 +3,7 @@
 
 #define HEADERS_PARSE_ERROR (-1)
 #define HEADERS_ALLOC_ERROR (-2)
+#define HEADERS_END (-3)
 
 struct header {
 	char* key;

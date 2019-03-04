@@ -171,7 +171,7 @@ void testTimers() {
 	timer_stop(timer);
 	timer_destroy(timer);
 
-	checkInt(counter, 100, "interval count");
+	checkBool(counter >= 99 && counter <= 101, "interval count");
 }
 
 void testHeaders() {
@@ -185,6 +185,8 @@ void testHeaders() {
 	checkInt(headers_parse(&headers, tmp, strlen(tmp)), HEADERS_PARSE_ERROR, "parse error");
 	tmp = "test2: Hello World2";
 	checkInt(headers_parse(&headers, tmp, strlen(tmp)), 1, "parse ok");
+	tmp = "";
+	checkInt(headers_parse(&headers, tmp, strlen(tmp)), HEADERS_END, "header end");
 
 	checkString(headers_get(&headers, "test"), "Hello World", "value check");
 

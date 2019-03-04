@@ -45,6 +45,10 @@ int headers_parse(struct headers* headers, const char* _currentHeader, size_t le
 	char* key = NULL;
 	char* value = NULL;
 
+	if (length == 0) {
+		return HEADERS_END;
+	}
+
 	char* currentHeader = malloc(length);
 	if (currentHeader == NULL)
 		return HEADERS_ALLOC_ERROR;

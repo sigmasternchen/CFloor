@@ -431,8 +431,6 @@ void* listenThread(void* _bind) {
 			continue;
 		}
 
-		setSIGIO(tmp, true);
-
 		connection->state = OPENED;
 		connection->client = client;
 		connection->bind = bindObj;
@@ -451,6 +449,11 @@ void* listenThread(void* _bind) {
 		updateTiming(connection, false);
 
 		linked_push(&connectionList, connection);
+		
+		setSIGIO(tmp, true);
+
+		// trigger sigio in case we missed something
+		kill(getpid(), SIGIO);
 	}
 }
 

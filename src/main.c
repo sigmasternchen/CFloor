@@ -10,7 +10,7 @@ handler_t handlerGetter(struct metaData metaData, const char* host, struct bind*
 }
 
 int main(int argc, char** argv) {
-	setLogging(stderr, INFO, true);
+	setLogging(stderr, DEBUG, true);
 	setCriticalHandler(NULL);
 
 	struct networkingConfig config = {

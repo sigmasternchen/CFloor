@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <errno.h>
+#include <fcntl.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -44,10 +45,10 @@ void cleanup() {
 			unlink = true;
 		} else if (diffms > networkingConfig.connectionTimeout) {
 			unlink = true;
-			linked_push(&connectionsToFree, connection);
 		}
 
 		if (unlink) {	
+			linked_push(&connectionsToFree, connection);
 			unlinked++;
 			linked_unlink(link);
 		}
@@ -55,7 +56,7 @@ void cleanup() {
 		link = linked_next(link);
 	}
 
-	info("cleanup: %d/%d unlinked", unlinked, length);
+	debug("cleanup: %d/%d unlinked", unlinked, length);
 
 	link = linked_first(&connectionsToFree);
 
@@ -73,12 +74,8 @@ void cleanup() {
 			if (connection->currentHeader != NULL)
 				free(connection->currentHeader);
 
-			for (int i = 0; i < connection->headers.number; i++) {
-				if (connection->headers.headers[i].key != NULL)
-					free(connection->headers.headers[i].key);
-				if (connection->headers.headers[i].value != NULL)
-					free(connection->headers.headers[i].value);
-			}
+			headers_free(&(connections->headers));
+
 			if (connection->headers.headers != NULL)
 				free(connection->headers.headers);
 
@@ -92,13 +89,119 @@ void cleanup() {
 		link = linked_next(link);
 	}
 
-	info("cleanup: %d/%d freed", freed, length);
+	debug("cleanup: %d/%d freed", freed, length);
 }
 
+void setSIGIO(int fd, bool enable) {
+	// set socket to non-blocking, asynchronous
+
+	int flags = fcntl(fd, F_GETFL);
+	flags |= O_NONBLOCK;
+	if (enable) {
+		flags |= O_ASYNC;
+	} else {
+		flags &= O_ASYNC;
+	}
+	fcntl(fd, F_SETFL,  flags);
+
+	// set signal owner
+	fcntl(fd, F_SETOWN, getpid());
+}
+
+int dumpHeaderBuffer(char* buffer, size_t size, struct connection* connection) {
+	if (connection->currentHeaderLength == 0) {
+		connection->currentHeader = malloc(size + 1);
+		if (connection->currentHeader == NULL) {
+			error("networking: couldn't allocate memory for header: %s", strerror(errno));
+			error("networking: aborting request");
+			return -1;
+		}
+	} else {
+		char* tmp = realloc(connection->currentHeader, connection->currentHeaderLength + size + 1);
+		if (tmp == NULL) {
+			error("networking: couldn't allocate memory for header: %s", strerror(errno));
+			error("networking: aborting request");
+			return -1;
+		}
+		connection->currentHeader = tmp;
+	}
+	memcpy(connection->currentHeader + connection->currentHeaderLength, buffer, size);
+	connection->currentHeaderLength += size;
+
+	return 0;
+}
+
+#define BUFFER_LENGTH (64)
 
 pthread_t dataThreadId;
 void dataHandler(int signo) {
-	info("data handler got called.");
+	debug("networking: data handler got called.");
+
+	for(link_t* link = linked_first(&connectionList); link != NULL; link = linked_next(link)) {
+		debug("networking: connection %p", link);
+		struct connection* connection = link->data;
+		if (connection->state != OPENED)
+			continue;
+		int tmp;
+		char c;
+		char buffer[BUFFER_LENGTH];
+		size_t length = 0;
+		bool dropConnection = false;
+		char last = 0;
+		if (connection->currentHeaderLength > 0)
+			last = connection->currentHeader[connection->currentHeaderLength];
+		while((tmp = read(connection->fd, &c, 1)) > 0) {
+			if (last == '\r' && c == '\n') {
+				if (dumpHeaderBuffer(&(buffer[0]), length, connection)) < 0) {
+					dropConnection = true;
+					break;
+				}
+
+				headers_parse(&(connecion->headers), connection->currentHeader, connection->currentHeaderLength);
+
+				connection->currentHeaderLength = 0;
+				free(connection->currentHeader);
+				connection->currentHeader = NULL;
+				length = 0;
+
+				continue;
+			}
+			
+			if (length >= BUFFER_LENGTH) {
+				length = 0;
+				if (dumpHeaderBuffer(&(buffer[0]), BUFFER_LENGTH, connection) < 0) {
+					dropConnection = true;
+					break;
+				}
+			}
+		}
+		if (tmp < 0) {
+			switch(errno) {
+				case EAGAIN:
+					// no more data to be ready
+					// ignore this error
+					break;
+				default:
+					dropConnection = true;
+					error("networking: error reading socket: %s", strerror(errno));
+					break;
+			}
+		} else if (tmp == 0) {
+			error("networking: connection ended");
+			dropConnection = true;
+		}
+		if (length > 0) {
+			if (dumpHeaderBuffer(&(buffer[0]), length, connection) < 0) {
+				dropConnection = true;
+			}
+		}
+
+		if (dropConnection) {
+			debug("networking: dropping connection");
+			setSIGIO(connection->fd, false);
+			connection->state = ABORTED;
+		}
+	}
 }
 void* dataThread(void* ignore) {
 	signal_block_all();
@@ -216,6 +319,8 @@ void* listenThread(void* _bind) {
 			error("networking: Couldn't allocate connection objekt: %s", strerror(errno));
 			continue;
 		}
+
+		setSIGIO(tmp, true);
 
 		connection->state = OPENED;
 		connection->client = client;

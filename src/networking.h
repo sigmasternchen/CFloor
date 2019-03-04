@@ -50,7 +50,6 @@ struct connection {
 	struct headers headers;
 	size_t currentHeaderLength;
 	char* currentHeader;
-	handler_t handler;
 	struct timing timing;
 };
 

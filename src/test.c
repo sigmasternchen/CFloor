@@ -13,6 +13,7 @@
 #include "linked.h"
 #include "logging.h"
 #include "signals.h"
+#include "headers.h"
 
 bool global = true;
 bool overall = true;
@@ -173,7 +174,24 @@ void testTimers() {
 	checkInt(counter, 100, "interval count");
 }
 
-handler_t handlerGetter(struct metaData metaData, const char* host) {
+void testHeaders() {
+	struct headers headers = (struct headers) {
+		.number = 0
+	};
+
+	char* tmp = "test:  Hello World  ";
+	checkInt(headers_parse(&headers, tmp, strlen(tmp)), 0, "parse ok");
+	tmp = "blablabla";
+	checkInt(headers_parse(&headers, tmp, strlen(tmp)), HEADERS_PARSE_ERROR, "parse error");
+	tmp = "test2: Hello World2";
+	checkInt(headers_parse(&headers, tmp, strlen(tmp)), 1, "parse ok");
+
+	checkString(headers_get(&headers, "test"), "Hello World", "value check");
+
+	headers_free(&headers);
+}
+
+handler_t handlerGetter(struct metaData metaData, const char* host, struct bind* bind) {
 	return NULL;
 }
 
@@ -202,6 +220,7 @@ int main(int argc, char** argv) {
 	test("linked lists", &testLinkedList);
 	test("logging", &testLogging);
 	test("signals", &testTimers);
+	test("headers", &testHeaders);
 
 
 	printf("\nOverall: %s\n", overall ? "OK" : "FAILED");

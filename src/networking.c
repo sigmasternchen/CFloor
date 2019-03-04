@@ -56,7 +56,7 @@ void cleanup() {
 		link = linked_next(link);
 	}
 
-	debug("cleanup: %d/%d unlinked", unlinked, length);
+	//debug("cleanup: %d/%d unlinked", unlinked, length);
 
 	link = linked_first(&connectionsToFree);
 
@@ -74,10 +74,7 @@ void cleanup() {
 			if (connection->currentHeader != NULL)
 				free(connection->currentHeader);
 
-			headers_free(&(connections->headers));
-
-			if (connection->headers.headers != NULL)
-				free(connection->headers.headers);
+			headers_free(&(connection->headers));
 
 			close(connection->fd);
 
@@ -89,20 +86,26 @@ void cleanup() {
 		link = linked_next(link);
 	}
 
-	debug("cleanup: %d/%d freed", freed, length);
+	//debug("cleanup: %d/%d freed", freed, length);
 }
 
 void setSIGIO(int fd, bool enable) {
 	// set socket to non-blocking, asynchronous
 
 	int flags = fcntl(fd, F_GETFL);
+	if (flags < 0) {
+		critical("networking: couldn't get socket flags");
+	}
+
 	flags |= O_NONBLOCK;
 	if (enable) {
 		flags |= O_ASYNC;
 	} else {
-		flags &= O_ASYNC;
+		flags &= ~O_ASYNC;
 	}
-	fcntl(fd, F_SETFL,  flags);
+	if (fcntl(fd, F_SETFL, flags) < 0) {
+		critical("networking: couldn't set socket flags");
+	}
 
 	// set signal owner
 	fcntl(fd, F_SETOWN, getpid());
@@ -127,8 +130,74 @@ int dumpHeaderBuffer(char* buffer, size_t size, struct connection* connection) {
 	}
 	memcpy(connection->currentHeader + connection->currentHeaderLength, buffer, size);
 	connection->currentHeaderLength += size;
+	connection->currentHeader[connection->currentHeaderLength] = '\0';
 
 	return 0;
+}
+
+#define SUCCESS (0)
+#define ALLOC_ERROR (-1)
+#define OTHER_ERROR (-2)
+
+int setMetaData(struct metaData* metaData, char* header) {
+
+	char* _method = strtok(header, " ");
+	if (_method == NULL)
+		return OTHER_ERROR;
+	char* _path = strtok(NULL, " ");
+	if (_path == NULL)
+		return OTHER_ERROR;
+	char* _httpVersion = strtok(NULL, " ");
+	if (_httpVersion == NULL)
+		return OTHER_ERROR;
+
+	char* _null = strtok(NULL, " ");
+	if (_null != NULL)
+		return OTHER_ERROR;
+
+	_path = strtok(_path, "#");
+	int tmp = strlen(_path);
+	_path = strtok(_path, "?");
+	char* _queryString = "";
+	if (tmp > strlen(_path)) {
+		_queryString = _path + strlen(_path) + 1;
+	}
+
+	enum method method;
+
+	if (strcmp(_method, "GET") == 0)
+		method = GET;
+	else if (strcmp(_method, "POST") == 0)
+		method = POST;
+	else if (strcmp(_method, "PUT") == 0)
+		method = PUT;
+	else
+		return OTHER_ERROR;
+
+	enum httpVersion httpVersion;
+	if (strcmp(_httpVersion, "HTTP/1.0") == 0)
+		httpVersion = HTTP10;
+	else if (strcmp(_httpVersion, "HTTP/1.1") == 0)
+		httpVersion = HTTP11;
+	else
+		return OTHER_ERROR;
+
+	char* path = malloc(strlen(_path) + 1);
+	if (path == NULL) {
+		return ALLOC_ERROR;
+	}
+	char* queryString = malloc(strlen(_queryString) + 1);
+	if (queryString == NULL) {
+		free(path);
+		return ALLOC_ERROR;
+	}
+	
+	metaData->method = method;
+	metaData->httpVersion = httpVersion;
+	metaData->path = path;
+	metaData->queryString = queryString;
+
+	return SUCCESS;
 }
 
 #define BUFFER_LENGTH (64)
@@ -149,15 +218,53 @@ void dataHandler(int signo) {
 		bool dropConnection = false;
 		char last = 0;
 		if (connection->currentHeaderLength > 0)
-			last = connection->currentHeader[connection->currentHeaderLength];
+			last = connection->currentHeader[connection->currentHeaderLength - 1];
 		while((tmp = read(connection->fd, &c, 1)) > 0) {
 			if (last == '\r' && c == '\n') {
-				if (dumpHeaderBuffer(&(buffer[0]), length, connection)) < 0) {
+				if (dumpHeaderBuffer(&(buffer[0]), length, connection) < 0) {
 					dropConnection = true;
 					break;
 				}
 
-				headers_parse(&(connecion->headers), connection->currentHeader, connection->currentHeaderLength);
+				debug("networking: header: %s", connection->currentHeader);
+
+				// \r is in the buffer
+				connection->currentHeaderLength--;
+				connection->currentHeader[connection->currentHeaderLength] = '\0';
+
+				int tmp;
+
+				if (connection->metaData.path == NULL) {
+					tmp = setMetaData(&(connection->metaData), connection->currentHeader);
+					if (tmp == ALLOC_ERROR) {
+						error("networking: couldn't allocate memory for meta data: %s", strerror(errno));
+						error("networking: aborting request");
+						dropConnection = true;
+						break;
+					} else if (tmp == OTHER_ERROR) {
+						error("networking: error while reading header line");
+						error("networking: aborting request");
+						dropConnection = true;
+						break;
+					}
+				} else {
+					tmp = headers_parse(&(connection->headers), connection->currentHeader, connection->currentHeaderLength);
+					if (tmp == HEADERS_END) {
+						debug("networking: headers complete");
+						return;
+					} else if (tmp == HEADERS_ALLOC_ERROR) {
+						error("networking: couldn't allocate memory for header: %s", strerror(errno));
+						error("networking: aborting request");
+						dropConnection = true;
+						break;
+					} else if (tmp == HEADERS_PARSE_ERROR) {
+						error("networking: failed to parse headers");
+						error("networking: aborting request");
+						dropConnection = true;
+						break;
+
+					}
+				}
 
 				connection->currentHeaderLength = 0;
 				free(connection->currentHeader);
@@ -174,7 +281,11 @@ void dataHandler(int signo) {
 					break;
 				}
 			}
+
+			buffer[length++] = c;
+			last = c;
 		}
+
 		if (tmp < 0) {
 			switch(errno) {
 				case EAGAIN:
@@ -336,7 +447,6 @@ void* listenThread(void* _bind) {
 		};
 		connection->currentHeaderLength = 0;
 		connection->currentHeader = NULL;
-		connection->handler = NULL;
 		connection->inUse = 0;
 		updateTiming(connection, false);
 

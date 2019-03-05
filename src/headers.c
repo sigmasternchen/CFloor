@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "headers.h"
+#include "misc.h"
 
 int headers_find(struct headers* headers, const char* key) {
 	for (int i = 0; i < headers->number; i++) {
@@ -121,4 +122,65 @@ void headers_free(struct headers* headers) {
 	
 	if (headers->headers != NULL)
 		free(headers->headers);
+}
+
+int headers_metadata(struct metaData* metaData, char* header) {
+
+	char* _method = strtok(header, " ");
+	if (_method == NULL)
+		return HEADERS_PARSE_ERROR;
+	char* _path = strtok(NULL, " ");
+	if (_path == NULL)
+		return HEADERS_PARSE_ERROR;
+	char* _httpVersion = strtok(NULL, " ");
+	if (_httpVersion == NULL)
+		return HEADERS_PARSE_ERROR;
+
+	char* _null = strtok(NULL, " ");
+	if (_null != NULL)
+		return HEADERS_PARSE_ERROR;
+
+	_path = strtok(_path, "#");
+	int tmp = strlen(_path);
+	_path = strtok(_path, "?");
+	char* _queryString = "";
+	if (tmp > strlen(_path)) {
+		_queryString = _path + strlen(_path) + 1;
+	}
+
+	enum method method;
+
+	if (strcmp(_method, "GET") == 0)
+		method = GET;
+	else if (strcmp(_method, "POST") == 0)
+		method = POST;
+	else if (strcmp(_method, "PUT") == 0)
+		method = PUT;
+	else
+		return HEADERS_PARSE_ERROR;
+
+	enum httpVersion httpVersion;
+	if (strcmp(_httpVersion, "HTTP/1.0") == 0)
+		httpVersion = HTTP10;
+	else if (strcmp(_httpVersion, "HTTP/1.1") == 0)
+		httpVersion = HTTP11;
+	else
+		return HEADERS_PARSE_ERROR;
+
+	char* path = malloc(strlen(_path) + 1);
+	if (path == NULL) {
+		return HEADERS_ALLOC_ERROR;
+	}
+	char* queryString = malloc(strlen(_queryString) + 1);
+	if (queryString == NULL) {
+		free(path);
+		return HEADERS_ALLOC_ERROR;
+	}
+	
+	metaData->method = method;
+	metaData->httpVersion = httpVersion;
+	metaData->path = path;
+	metaData->queryString = queryString;
+
+	return HEADERS_SUCCESS;
 }

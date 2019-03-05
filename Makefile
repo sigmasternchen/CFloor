@@ -23,7 +23,7 @@ obj/networking.o: src/networking.h src/headers.h src/linked.h src/logging.h src/
 obj/linked.o: src/linked.h
 obj/logging.o: src/logging.h
 obj/signals.o: src/signals.h
-obj/headers.o: src/headers.h
+obj/headers.o: src/headers.h src/misc.h
 
 obj/%.o: src/%.c obj
 	$(CC) $(CFLAGS) -c -o $@ $<

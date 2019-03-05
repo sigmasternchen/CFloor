@@ -18,6 +18,31 @@
 
 struct networkingConfig networkingConfig;
 
+static inline long timespecDiffMs(struct timespec start, struct timespec end) {
+	return (end.tv_sec - start.tv_sec) * 1000 + (end.tv_nsec / 1000000 - start.tv_nsec / 1000000);
+}
+
+static inline struct timespec getTime() {
+	struct timespec time;
+
+	// no need to check result; none of the errors can happen
+	clock_gettime(TIMING_CLOCK, &time);
+
+	return time;
+}
+
+static inline long timespacAgeMs(struct timespec start) {
+	return timespecDiffMs(start, getTime());
+}
+
+void updateTiming(struct connection* connection, bool stateChange) {
+	struct timespec time = getTime();
+
+	connection->timing.lastUpdate = time;
+	if (stateChange)	
+		connection->timing.states[connection->state] = time;
+}
+
 linkedList_t connectionList;
 
 linkedList_t connectionsToFree;
@@ -32,14 +57,11 @@ void cleanup() {
 	while(link != NULL) {
 		length++;
 
-		struct timespec time;
-		// no need to check result; none of the errors can happen
-		clock_gettime(TIMING_CLOCK, &time);
-
 		bool unlink = false;
 
 		struct connection* connection = link->data;
-		long diffms = (time.tv_sec - connection->timing.lastUpdate.tv_sec) * 1000 + (time.tv_nsec / 1000000 - connection->timing.lastUpdate.tv_nsec / 1000000);
+
+		long diffms = timespacAgeMs(connection->timing.lastUpdate);
 
 		if (connection->state != OPENED) {
 			unlink = true;
@@ -135,69 +157,13 @@ int dumpHeaderBuffer(char* buffer, size_t size, struct connection* connection) {
 	return 0;
 }
 
-#define SUCCESS (0)
-#define ALLOC_ERROR (-1)
-#define OTHER_ERROR (-2)
 
-int setMetaData(struct metaData* metaData, char* header) {
-
-	char* _method = strtok(header, " ");
-	if (_method == NULL)
-		return OTHER_ERROR;
-	char* _path = strtok(NULL, " ");
-	if (_path == NULL)
-		return OTHER_ERROR;
-	char* _httpVersion = strtok(NULL, " ");
-	if (_httpVersion == NULL)
-		return OTHER_ERROR;
-
-	char* _null = strtok(NULL, " ");
-	if (_null != NULL)
-		return OTHER_ERROR;
-
-	_path = strtok(_path, "#");
-	int tmp = strlen(_path);
-	_path = strtok(_path, "?");
-	char* _queryString = "";
-	if (tmp > strlen(_path)) {
-		_queryString = _path + strlen(_path) + 1;
-	}
-
-	enum method method;
-
-	if (strcmp(_method, "GET") == 0)
-		method = GET;
-	else if (strcmp(_method, "POST") == 0)
-		method = POST;
-	else if (strcmp(_method, "PUT") == 0)
-		method = PUT;
-	else
-		return OTHER_ERROR;
-
-	enum httpVersion httpVersion;
-	if (strcmp(_httpVersion, "HTTP/1.0") == 0)
-		httpVersion = HTTP10;
-	else if (strcmp(_httpVersion, "HTTP/1.1") == 0)
-		httpVersion = HTTP11;
-	else
-		return OTHER_ERROR;
-
-	char* path = malloc(strlen(_path) + 1);
-	if (path == NULL) {
-		return ALLOC_ERROR;
-	}
-	char* queryString = malloc(strlen(_queryString) + 1);
-	if (queryString == NULL) {
-		free(path);
-		return ALLOC_ERROR;
-	}
+void requestHandlerThread(struct connection* connection) {
 	
-	metaData->method = method;
-	metaData->httpVersion = httpVersion;
-	metaData->path = path;
-	metaData->queryString = queryString;
+}
 
-	return SUCCESS;
+void startRequestHandler(struct connection* connection) {
+	connection->inUse++;
 }
 
 #define BUFFER_LENGTH (64)
@@ -234,14 +200,16 @@ void dataHandler(int signo) {
 
 				int tmp;
 
+				updateTiming(connection, false);
+
 				if (connection->metaData.path == NULL) {
-					tmp = setMetaData(&(connection->metaData), connection->currentHeader);
-					if (tmp == ALLOC_ERROR) {
+					tmp = headers_metadata(&(connection->metaData), connection->currentHeader);
+					if (tmp == HEADERS_ALLOC_ERROR) {
 						error("networking: couldn't allocate memory for meta data: %s", strerror(errno));
 						error("networking: aborting request");
 						dropConnection = true;
 						break;
-					} else if (tmp == OTHER_ERROR) {
+					} else if (tmp == HEADERS_PARSE_ERROR) {
 						error("networking: error while reading header line");
 						error("networking: aborting request");
 						dropConnection = true;
@@ -251,7 +219,10 @@ void dataHandler(int signo) {
 					tmp = headers_parse(&(connection->headers), connection->currentHeader, connection->currentHeaderLength);
 					if (tmp == HEADERS_END) {
 						debug("networking: headers complete");
-						return;
+						connection->state = PROCESSING;
+						updateTiming(connection, true);
+						startRequestHandler(connection);
+						break;
 					} else if (tmp == HEADERS_ALLOC_ERROR) {
 						error("networking: couldn't allocate memory for header: %s", strerror(errno));
 						error("networking: aborting request");
@@ -323,17 +294,6 @@ void* dataThread(void* ignore) {
 	while(true) {
 		sleep(0xffff);
 	}
-}
-
-void updateTiming(struct connection* connection, bool stateChange) {
-	struct timespec time;
-
-	// no need to check result; none of the errors can happen
-	clock_gettime(TIMING_CLOCK, &time);
-
-	connection->timing.lastUpdate = time;
-	if (stateChange)	
-		connection->timing.states[connection->state] = time;
 }
 
 void* listenThread(void* _bind) {

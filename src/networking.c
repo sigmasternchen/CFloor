@@ -15,6 +15,7 @@
 #include "linked.h"
 #include "logging.h"
 #include "signals.h"
+#include "error.h"
 
 struct networkingConfig networkingConfig;
 
@@ -157,13 +158,164 @@ int dumpHeaderBuffer(char* buffer, size_t size, struct connection* connection) {
 	return 0;
 }
 
+int sendHeader(int statusCode, struct headers headers, struct request* request) {
+	struct connection* connection = (struct connection*) request->_private;
 
-void requestHandlerThread(struct connection* connection) {
+	// send statusCode and headers
+
+	return connection->threads.responseFd;
+}
+
+static inline void stopThread(pthread_t self, pthread_t thread, bool force) {
+	if (pthread_equal(self, thread))
+		return;
+
+	if (force)
+		pthread_cancel(thread);
+	else
+		pthread_join(thread, NULL);
+}
+
+void safeEndConnection(struct connection* connection, bool force) {
+	pthread_t self = pthread_self();
+
+	stopThread(self, connection->threads.request, true);
+	stopThread(self, connection->threads.response, force);
+	stopThread(self, connection->threads.helper[0], force);
+	stopThread(self, connection->threads.helper[1], force);
+
+	connection->inUse--;
+}
+
+/*
+ * This thread calls the handler.
+ */
+void* responseThread(void* data) {
+	struct connection* connection = (struct connection*) data;
+
+	connection->threads.handler((struct request) {
+		.metaData = connection->metaData,
+		.headers = &(connection->headers),
+		.fd = connection->threads.requestFd,
+		._private = connection 
+	}, (struct response) {
+		.sendHeader = sendHeader
+	});
+
+	close(connection->threads.requestFd);
+	close(connection->threads._requestFd);
+	close(connection->threads.responseFd);
+	close(connection->threads._responseFd);
+
+	safeEndConnection(connection, false);
+
+	return NULL;
+}
+
+/*
+ * This thread handles finding a handler and handles pipes
+ */
+void* requestThread(void* data) {
+	struct connection* connection = (struct connection*) data;
+
+	signal_block_all();
+
+	handler_t handler = networkingConfig.getHandler(connection->metaData, headers_get(&(connection->headers), "Host"), connection->bind);
+
+	if (handler == NULL) {
+		handler = status500;
+	}
+
+	connection->threads.handler = handler;
+
+	int pipefd[2];
+	if (pipe(&(pipefd[0])) < 0) {
+		error("networking: Couldn't create reponse pipe: %s", strerror(errno));
+		warn("Aborting request.");
+		connection->state = ABORTED;
+		connection->inUse--;
+		return NULL;
+	}
+
+	int request = pipefd[1];
+	connection->threads._requestFd = request;
+	connection->threads.requestFd = pipefd[0];
 	
+	if (pipe(&(pipefd[0])) < 0) {
+		close(request);
+		close(connection->threads.requestFd);
+
+		error("networking: Couldn't create reponse pipe: %s", strerror(errno));
+		warn("Aborting request.");
+		connection->state = ABORTED;
+		connection->inUse--;
+		return NULL;
+	}
+
+	int response = pipefd[0];
+	connection->threads._responseFd = response;
+	connection->threads.responseFd = pipefd[1];
+
+	if (startCopyThread(connection->fd, request, &(connection->threads.helper[0])) < 0) {
+		close(request);
+		close(connection->threads.requestFd);
+		close(response);
+		close(connection->threads.responseFd);
+		
+		error("networking: Couldn't start helper thread.");
+		warn("networking: Aborting request.");
+		connection->state = ABORTED;
+		connection->inUse--;
+		return NULL;
+	}
+	if (startCopyThread(response, connection->fd, &(connection->threads.helper[1])) < 0) {
+		close(request);
+		close(connection->threads.requestFd);
+		close(response);
+		close(connection->threads.responseFd);	
+	
+		error("networking: Couldn't start helper thread.");
+		warn("networking: Aborting request.");
+		connection->state = ABORTED;
+		connection->inUse--;
+		return NULL;
+	}
+
+	if (pthread_create(&(connection->threads.response), NULL, &responseThread, connection) < 0) {
+		close(request);
+		close(connection->threads.requestFd);
+		close(response);
+		close(connection->threads.responseFd);
+
+		error("networking: Couldn't start response thread.");
+		warn("networking: Aborting request.");
+		connection->state = ABORTED;
+		connection->inUse--;
+		return NULL;
+	}
+
+	// timeout
+
+	close(request);
+	close(connection->threads.requestFd);
+	close(response);
+	close(connection->threads.responseFd);
+	
+	safeEndConnection(connection, true);
+
+	return NULL;
 }
 
 void startRequestHandler(struct connection* connection) {
 	connection->inUse++;
+
+	if (pthread_create(&(connection->threads.request), NULL, &requestThread, connection) != 0) {
+		error("networking: Couldn't start request thread.");
+		warn("networking: Aborting request.");
+		connection->state = ABORTED;
+		connection->inUse--;
+		return;
+	}
 }
 
 #define BUFFER_LENGTH (64)
@@ -206,12 +358,12 @@ void dataHandler(int signo) {
 					tmp = headers_metadata(&(connection->metaData), connection->currentHeader);
 					if (tmp == HEADERS_ALLOC_ERROR) {
 						error("networking: couldn't allocate memory for meta data: %s", strerror(errno));
-						error("networking: aborting request");
+						warn("networking: aborting request");
 						dropConnection = true;
 						break;
 					} else if (tmp == HEADERS_PARSE_ERROR) {
 						error("networking: error while reading header line");
-						error("networking: aborting request");
+						warn("networking: aborting request");
 						dropConnection = true;
 						break;
 					}
@@ -225,12 +377,12 @@ void dataHandler(int signo) {
 						break;
 					} else if (tmp == HEADERS_ALLOC_ERROR) {
 						error("networking: couldn't allocate memory for header: %s", strerror(errno));
-						error("networking: aborting request");
+						warn("networking: aborting request");
 						dropConnection = true;
 						break;
 					} else if (tmp == HEADERS_PARSE_ERROR) {
 						error("networking: failed to parse headers");
-						error("networking: aborting request");
+						warn("networking: aborting request");
 						dropConnection = true;
 						break;
 
@@ -403,6 +555,22 @@ void* listenThread(void* _bind) {
 			.number = 0,
 			.headers = NULL
 		};
+		connection->threads = (struct threads) {
+			/*
+			 * This is really hacky. pthread_t is no(t always an) integer.
+			 * TODO: better solution
+			 */
+			.request = 0,
+			.response = 0,
+			.handler = NULL,
+			.requestFd = -1,
+			.responseFd = -1,
+			._requestFd = -1,
+			._responseFd = -1
+		};
+		// TODO see above
+		connection->threads.helper[0] = 0;
+		connection->threads.helper[1] = 0;
 		connection->currentHeaderLength = 0;
 		connection->currentHeader = NULL;
 		connection->inUse = 0;
@@ -439,6 +607,7 @@ void initNetworking(struct networkingConfig _networkingConfig) {
 	}
 
 	signal_block(SIGIO);
+	signal_block(SIGALRM);
 
 	for(int i = 0; i < networkingConfig.binds.number; i++) {
 		struct bind* bind = &(networkingConfig.binds.binds[i]);

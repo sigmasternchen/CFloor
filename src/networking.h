@@ -40,6 +40,17 @@ struct bind {
 
 typedef handler_t (*handlerGetter_t)(struct metaData metaData, const char* host, struct bind* bind);
 
+struct threads {
+	pthread_t request;
+	pthread_t response;
+	pthread_t helper[2];
+	handler_t handler;
+	int requestFd;
+	int responseFd;
+	int _requestFd;
+	int _responseFd;
+};
+
 struct connection {
 	enum connectionState state;
 	struct sockaddr_in client;
@@ -51,6 +62,7 @@ struct connection {
 	size_t currentHeaderLength;
 	char* currentHeader;
 	struct timing timing;
+	struct threads threads;
 };
 
 struct binds {

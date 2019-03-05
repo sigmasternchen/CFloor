@@ -1,7 +1,7 @@
 #ifndef MISC_H
 #define MISC_H
 
-#include "headers.h"
+#include <pthread.h>
 
 enum method {
 	GET, POST, PUT
@@ -18,6 +18,12 @@ struct metaData {
 	char* queryString;
 };
 
+/*
+ * recursive headers. 
+ * I don't know how to fix this a better way.
+ */
+#include "headers.h"
+
 struct request {
 	struct metaData metaData;
 	struct headers* headers;
@@ -26,9 +32,18 @@ struct request {
 };
 
 struct response {
-	int (*sendHeader)(int statusCode, struct headers headers);
+	int (*sendHeader)(int statusCode, struct headers headers, struct request* request);
 };
 
 typedef void (*handler_t)(struct request request, struct response response);
+
+
+
+struct fileCopy {
+	int readFd;
+	int writeFd;
+};
+int startCopyThread(int from, int to, pthread_t* thread);
+void* fileCopyThread(void* data);
 
 #endif

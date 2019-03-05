@@ -4,6 +4,12 @@
 #include "headers.h"
 #include "misc.h"
 
+struct headers headers_create() {
+	return (struct headers) {
+		.number = 0
+	};
+}
+
 int headers_find(struct headers* headers, const char* key) {
 	for (int i = 0; i < headers->number; i++) {
 		if (strcmp(headers->headers[i].key, key) == 0)
@@ -19,12 +25,26 @@ const char* headers_get(struct headers* headers, const char* key) {
 	return headers->headers[tmp].value;
 }
 
-int headers_mod(struct headers* headers, char* key, char* value) {
+int headers_mod(struct headers* headers, const char* _key, const char* _value) {
+	char* tmp = strclone(_key);
+	if (tmp == NULL) {
+		return HEADERS_ALLOC_ERROR;
+	}
+	char* key = tmp;
+	tmp = strclone(_value);
+	if (tmp == NULL) {
+		return HEADERS_ALLOC_ERROR;
+	}
+	char* value = tmp;
+
 	int index = headers_find(headers, key);
 	
 	if (index < 0) {
 		struct header* tmp = realloc(headers->headers, (headers->number + 1) * sizeof(struct header));
 		if (tmp == NULL) {
+			free(key);
+			free(value);
+
 			// we don't need to clean up this connection gets dropped anyway
 			return HEADERS_ALLOC_ERROR;
 		}
@@ -109,7 +129,10 @@ int headers_parse(struct headers* headers, const char* _currentHeader, size_t le
 		}
 	}
 
-	return headers_mod(headers, key, value);
+	int tmp = headers_mod(headers, key, value);
+	free(key);
+	free(value);
+	return tmp;
 }
 
 void headers_free(struct headers* headers) {
@@ -122,6 +145,14 @@ void headers_free(struct headers* headers) {
 	
 	if (headers->headers != NULL)
 		free(headers->headers);
+
+	headers->number = 0;
+}
+
+void headers_dump(struct headers* headers, FILE* stream) {
+	for (int i = 0; i < headers->number; i++) {
+		fprintf(stream, "%s: %s\r\n", headers->headers[i].key, headers->headers[i].value);
+	}
 }
 
 int headers_metadata(struct metaData* metaData, char* header) {

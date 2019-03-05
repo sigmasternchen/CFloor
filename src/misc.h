@@ -24,19 +24,26 @@ struct metaData {
  */
 #include "headers.h"
 
+const char* getHTTPVersionString(enum httpVersion version);
+
+union userData {
+	int integer;
+	void* ptr;
+};
+
 struct request {
 	struct metaData metaData;
 	struct headers* headers;
 	int fd;
 	void* _private;
+	union userData user;
 };
 
 struct response {
-	int (*sendHeader)(int statusCode, struct headers headers, struct request* request);
+	int (*sendHeader)(int statusCode, struct headers* headers, struct request* request);
 };
 
 typedef void (*handler_t)(struct request request, struct response response);
-
 
 
 struct fileCopy {
@@ -45,5 +52,7 @@ struct fileCopy {
 };
 int startCopyThread(int from, int to, pthread_t* thread);
 void* fileCopyThread(void* data);
+
+char* strclone(const char* string);
 
 #endif

@@ -15,7 +15,7 @@
 #include "linked.h"
 #include "logging.h"
 #include "signals.h"
-#include "error.h"
+#include "status.h"
 
 struct networkingConfig networkingConfig;
 
@@ -158,14 +158,6 @@ int dumpHeaderBuffer(char* buffer, size_t size, struct connection* connection) {
 	return 0;
 }
 
-int sendHeader(int statusCode, struct headers headers, struct request* request) {
-	struct connection* connection = (struct connection*) request->_private;
-
-	// send statusCode and headers
-
-	return connection->threads.responseFd;
-}
-
 static inline void stopThread(pthread_t self, pthread_t thread, bool force) {
 	if (pthread_equal(self, thread))
 		return;
@@ -179,12 +171,51 @@ static inline void stopThread(pthread_t self, pthread_t thread, bool force) {
 void safeEndConnection(struct connection* connection, bool force) {
 	pthread_t self = pthread_self();
 
+	debug("networking: safely shuting down the connection. %d", force);
+
 	stopThread(self, connection->threads.request, true);
 	stopThread(self, connection->threads.response, force);
 	stopThread(self, connection->threads.helper[0], force);
 	stopThread(self, connection->threads.helper[1], force);
+	
+	close(connection->fd);
 
 	connection->inUse--;
+}
+
+int sendHeader(int statusCode, struct headers* headers, struct request* request) {
+	debug("networking: sending headers");
+
+	struct headers defaultHeaders = networkingConfig.defaultHeaders;
+
+	for(int i = 0; i < defaultHeaders.number; i++) {
+		headers_mod(headers, defaultHeaders.headers[i].key, defaultHeaders.headers[i].value);
+	} 
+
+	struct connection* connection = (struct connection*) request->_private;
+	int fd = connection->threads.responseFd;
+	
+	FILE* stream = fdopen(dup(fd), "w");	
+	if (stream == NULL) {
+		error("networking: Couldn't send header.");
+		return -1;
+	}
+
+	struct statusStrings strings = getStatusStrings(statusCode);
+
+	fprintf(stream, "%s %d %s\r\n", getHTTPVersionString(connection->metaData.httpVersion), statusCode, strings.statusString);
+
+	fprintf(stderr, "%s %d %s\r\n", getHTTPVersionString(connection->metaData.httpVersion), statusCode, strings.statusString);
+
+	headers_dump(headers, stream);
+
+	headers_dump(headers, stderr);
+
+
+	fprintf(stream, "\r\n");
+	fclose(stream);
+
+	return fd;
 }
 
 /*
@@ -192,6 +223,8 @@ void safeEndConnection(struct connection* connection, bool force) {
  */
 void* responseThread(void* data) {
 	struct connection* connection = (struct connection*) data;
+
+	debug("networking: calling response handler");
 
 	connection->threads.handler((struct request) {
 		.metaData = connection->metaData,
@@ -201,6 +234,8 @@ void* responseThread(void* data) {
 	}, (struct response) {
 		.sendHeader = sendHeader
 	});
+	
+	debug("networking: response handler returned");
 
 	close(connection->threads.requestFd);
 	close(connection->threads._requestFd);
@@ -256,7 +291,7 @@ void* requestThread(void* data) {
 	connection->threads._responseFd = response;
 	connection->threads.responseFd = pipefd[1];
 
-	if (startCopyThread(connection->fd, request, &(connection->threads.helper[0])) < 0) {
+	if (startCopyThread(dup(connection->fd), request, &(connection->threads.helper[0])) < 0) {
 		close(request);
 		close(connection->threads.requestFd);
 		close(response);
@@ -268,7 +303,7 @@ void* requestThread(void* data) {
 		connection->inUse--;
 		return NULL;
 	}
-	if (startCopyThread(response, connection->fd, &(connection->threads.helper[1])) < 0) {
+	if (startCopyThread(response, dup(connection->fd), &(connection->threads.helper[1])) < 0) {
 		close(request);
 		close(connection->threads.requestFd);
 		close(response);
@@ -294,7 +329,11 @@ void* requestThread(void* data) {
 		return NULL;
 	}
 
-	// timeout
+	debug("networking: going to sleep");
+	sleep(100);
+
+	error("networking: Timeout of handler.");
+	error("networking: Aborting");
 
 	close(request);
 	close(connection->threads.requestFd);
@@ -309,6 +348,7 @@ void* requestThread(void* data) {
 void startRequestHandler(struct connection* connection) {
 	connection->inUse++;
 
+	debug("networking: starting request handler");
 	if (pthread_create(&(connection->threads.request), NULL, &requestThread, connection) != 0) {
 		error("networking: Couldn't start request thread.");
 		warn("networking: Aborting request.");
@@ -483,6 +523,11 @@ void* listenThread(void* _bind) {
 
 		if (tmp == -1)
 			continue;
+
+		if (setsockopt(tmp, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0) {
+			close(tmp);
+			continue;
+		}
 		
 		bindObj->_private.socketFd = tmp;
 
@@ -493,7 +538,7 @@ void* listenThread(void* _bind) {
 	}
 
 	if (rp == NULL) {
-		error("networking: Could not bind.");
+		error("networking: Could not bind: %s", strerror(errno));
 		warn("networking: Not listening on %s:%s", bindObj->address == NULL ? "0.0.0.0" : bindObj->address, bindObj->port);
 		return NULL;
 	}
@@ -551,10 +596,7 @@ void* listenThread(void* _bind) {
 			.path = NULL,
 			.queryString = NULL
 		};
-		connection->headers = (struct headers) {
-			.number = 0,
-			.headers = NULL
-		};
+		connection->headers = headers_create();
 		connection->threads = (struct threads) {
 			/*
 			 * This is really hacky. pthread_t is no(t always an) integer.

@@ -4,6 +4,7 @@
 
 #include "networking.h"
 #include "logging.h"
+#include "headers.h"
 
 handler_t handlerGetter(struct metaData metaData, const char* host, struct bind* bind) {
 	return NULL;
@@ -12,6 +13,9 @@ handler_t handlerGetter(struct metaData metaData, const char* host, struct bind*
 int main(int argc, char** argv) {
 	setLogging(stderr, DEBUG, true);
 	setCriticalHandler(NULL);
+
+	struct headers headers = headers_create();
+	headers_mod(&headers, "Server", "CFloor 0.1");
 
 	struct networkingConfig config = {
 		.maxConnections = 1024,
@@ -25,9 +29,7 @@ int main(int argc, char** argv) {
 				}
 			}
 		},
-		.defaultResponse = {
-			.number = 0
-		},
+		.defaultHeaders = headers,
 		.getHandler = &handlerGetter
 	};
 
@@ -36,4 +38,6 @@ int main(int argc, char** argv) {
 	while(true) {
 		sleep(0xffff);
 	}
+
+	headers_free(&headers);
 }

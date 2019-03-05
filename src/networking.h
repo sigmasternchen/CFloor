@@ -74,7 +74,7 @@ struct networkingConfig {
 	struct binds binds;
 	long connectionTimeout;
 	long maxConnections;
-	struct headers defaultResponse;
+	struct headers defaultHeaders;
 	handlerGetter_t getHandler;
 };
 

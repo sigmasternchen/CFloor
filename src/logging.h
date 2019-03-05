@@ -3,6 +3,7 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 enum loglevel {
 	DEBUG, VERBOSE, INFO, WARN, ERROR, CRITICAL

@@ -197,7 +197,7 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 	
 	FILE* stream = fdopen(dup(fd), "w");	
 	if (stream == NULL) {
-		error("networking: Couldn't send header.");
+		error("networking: Couldn't send header: %s", strerror(errno));
 		return -1;
 	}
 
@@ -205,11 +205,7 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 
 	fprintf(stream, "%s %d %s\r\n", getHTTPVersionString(connection->metaData.httpVersion), statusCode, strings.statusString);
 
-	fprintf(stderr, "%s %d %s\r\n", getHTTPVersionString(connection->metaData.httpVersion), statusCode, strings.statusString);
-
 	headers_dump(headers, stream);
-
-	headers_dump(headers, stderr);
 
 
 	fprintf(stream, "\r\n");
@@ -237,12 +233,13 @@ void* responseThread(void* data) {
 	
 	debug("networking: response handler returned");
 
+	safeEndConnection(connection, false);
+	
 	close(connection->threads.requestFd);
-	close(connection->threads._requestFd);
-	close(connection->threads.responseFd);
 	close(connection->threads._responseFd);
 
-	safeEndConnection(connection, false);
+	close(connection->threads._requestFd);
+	close(connection->threads.responseFd);
 
 	return NULL;
 }
@@ -291,7 +288,7 @@ void* requestThread(void* data) {
 	connection->threads._responseFd = response;
 	connection->threads.responseFd = pipefd[1];
 
-	if (startCopyThread(dup(connection->fd), request, &(connection->threads.helper[0])) < 0) {
+	if (startCopyThread(connection->fd, request, true, &(connection->threads.helper[0])) < 0) {
 		close(request);
 		close(connection->threads.requestFd);
 		close(response);
@@ -303,7 +300,7 @@ void* requestThread(void* data) {
 		connection->inUse--;
 		return NULL;
 	}
-	if (startCopyThread(response, dup(connection->fd), &(connection->threads.helper[1])) < 0) {
+	if (startCopyThread(response, connection->fd, false, &(connection->threads.helper[1])) < 0) {
 		close(request);
 		close(connection->threads.requestFd);
 		close(response);
@@ -330,7 +327,8 @@ void* requestThread(void* data) {
 	}
 
 	debug("networking: going to sleep");
-	sleep(100);
+	// TODO set timeout via config
+	sleep(30);
 
 	error("networking: Timeout of handler.");
 	error("networking: Aborting");

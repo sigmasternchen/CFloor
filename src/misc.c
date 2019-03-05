@@ -1,6 +1,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <stdio.h>
 
 #include <pthread.h>
@@ -18,13 +19,14 @@ const char* getHTTPVersionString(enum httpVersion version) {
 	}
 }
 
-int startCopyThread(int from, int to, pthread_t* thread) {
+int startCopyThread(int from, int to, bool closeWriteFd, pthread_t* thread) {
 	struct fileCopy* files = malloc(sizeof(struct fileCopy));
 	if (files < 0)
 		return -1;
 
 	files->readFd = from;
 	files->writeFd = to;
+	files->closeWriteFd = closeWriteFd;
 
 	return pthread_create(thread, NULL, &fileCopyThread, files);
 }
@@ -35,11 +37,10 @@ void* fileCopyThread(void* data) {
 
 	while(read(files->readFd, &c, 1) > 0) {
 		write(files->writeFd, &c, 1);
-		//printf("copy thread: %c\n", c);
 	}
 
-	close(files->readFd);
-	close(files->writeFd);
+	if (files->closeWriteFd)
+		close(files->writeFd);
 
 	free(files);
 

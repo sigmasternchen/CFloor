@@ -1,6 +1,8 @@
 #ifndef MISC_H
 #define MISC_H
 
+#include <stdbool.h>
+
 #include <pthread.h>
 
 enum method {
@@ -49,8 +51,9 @@ typedef void (*handler_t)(struct request request, struct response response);
 struct fileCopy {
 	int readFd;
 	int writeFd;
+	bool closeWriteFd;
 };
-int startCopyThread(int from, int to, pthread_t* thread);
+int startCopyThread(int from, int to, bool closeWriteFd, pthread_t* thread);
 void* fileCopyThread(void* data);
 
 char* strclone(const char* string);

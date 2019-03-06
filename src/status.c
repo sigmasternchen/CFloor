@@ -140,12 +140,12 @@ struct statusStrings getStatusStrings(int status) {
 		case 403:
 			return (struct statusStrings) {
 				.statusString = "Forbidden",
-				.statusFormat = ""
+				.statusFormat = "You don't have the permission to access %s."
 			};
 		case 404:
 			return (struct statusStrings) {
 				.statusString = "Not found",
-				.statusFormat = ""
+				.statusFormat = "The file %s was not found on this server."
 			};
 		case 405:
 			return (struct statusStrings) {

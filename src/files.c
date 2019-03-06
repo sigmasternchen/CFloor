@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <dirent.h>
 
 #include "files.h"
 #include "misc.h"
@@ -18,21 +19,78 @@
 const char* documentRoot = NULL;
 bool indexes = false;
 
+// _documentRoot had to be a realpath
 void files_init(const char* _documentRoot, bool _index) {
 	documentRoot = _documentRoot;
 	indexes = _index;
 }
 
-void showIndex(int fd, const char* path) {
-	FILE* stream = fdopen(fd, "w");
-	if (stream == NULL) {
-		error("status: Couldn't get stream from fd: %s", strerror(errno));
-		return;
+int scandirFiler(const struct dirent* entry) {
+	if (strcmp(entry->d_name, "..") == 0)
+		return 1;
+	if (strncmp(entry->d_name, ".", 1) == 0)
+		return 0;
+	return 1;
+}
+
+int scandirSort(const struct dirent** a, const struct dirent** b) {
+	if ((*a)->d_type == DT_DIR && (*b)->d_type != DT_DIR)
+		return -1; 
+	if ((*a)->d_type != DT_DIR && (*b)->d_type == DT_DIR)
+		return 1;
+
+	return strcmp((*a)->d_name, (*b)->d_name); 
+}
+
+int showIndex(int fd, const char* path) {
+	const char* relative = path + strlen(documentRoot);
+
+	struct dirent** list;
+	int number = scandir(path, &list, &scandirFiler, &scandirSort);
+
+	if (number < 0) {
+		error("files: Couldn't read dir: %s", strerror(errno));
+		return -1;
 	}
 
-	// TODO index
+	FILE* stream = fdopen(fd, "w");
+	if (stream == NULL) {
+		free(list);
+		error("files: Couldn't get stream from fd: %s", strerror(errno));
+		return -1;
+	}
 
+	fprintf(stream, "<!DOCTYPE html>\n");
+	fprintf(stream, "<html>\n");
+	fprintf(stream, "	<head>\n");
+	fprintf(stream, "		<title>Index of %s/</title>\n", relative);
+	fprintf(stream, "	</head>\n");
+	fprintf(stream, "	<body>\n");
+	fprintf(stream, "		<h1>Index of %s/</h1>\n", relative);
+	fprintf(stream, "		<table>\n");
+	fprintf(stream, "			<tr>\n");
+	fprintf(stream, "				<th>Type</th>\n");
+	fprintf(stream, "				<th>File</th>\n");
+	fprintf(stream, "			</tr>\n");
+
+	for(int i = 0; i < number; i++) {
+		struct dirent* entry = list[i];
+		if (strcmp(entry->d_name, "..") == 0 && strcmp(relative, "") == 0)
+			continue;
+		fprintf(stream, "			<tr>\n");
+		fprintf(stream, "				<td>%s</td>\n", (entry->d_type == DT_DIR) ? "D" : "");
+		fprintf(stream, "				<td><a href='%s/%s'>%s</a></td>\n", relative, entry->d_name, entry->d_name);
+		fprintf(stream, "			</tr>\n");
+	}
+	
+	fprintf(stream, "		<table>\n");
+	fprintf(stream, "	</body>\n");
+	fprintf(stream, "</html>\n");
+
+	free(list);
 	fclose(stream);
+
+	return 0;
 }
 
 
@@ -74,7 +132,19 @@ void fileHandler(struct request request, struct response response) {
 	path = realpath(tmp, NULL);
 	if (path == NULL) {
 		free(tmp);
-		error("files: Couldn't get constructed realpath: %s", strerror(errno));
+		switch(errno) {
+			case EACCES:
+				status(request, response, 403);
+				return;
+			case ENOENT:
+			case ENOTDIR:
+				status(request, response, 404);
+				return;
+			default:
+				warn("files: Couldn't get constructed realpath: %s", strerror(errno));
+				status(request, response, 500);
+				return;
+		}
 		status(request, response, 500);
 		return;
 	}
@@ -117,16 +187,30 @@ void fileHandler(struct request request, struct response response) {
 		return;
 	}
 
+	bool done = false;
+	bool overrideStat = false;
+
 	if (S_ISDIR(statObj.st_mode)) {
+		// TODO check for index files
+
+		if (!indexes) {
+			status(request, response, 403);
+			return;
+		}
+
 		struct headers headers = headers_create();
 		headers_mod(&headers, "Content-Type", "text/html; charset=utf-8");
 		int fd = response.sendHeader(200, &headers, &request);
 		headers_free(&headers);
 
-		// if indexes
+		if (showIndex(fd, path) < 0) {
+			// TODO error
+		}
+		
+		done = true;
+	}
 
-		showIndex(fd, path);
-	} else if (S_ISREG(statObj.st_mode)) {
+	if (S_ISREG(statObj.st_mode) || overrideStat) {
 		int filefd = open(path, O_RDONLY);
 		if (filefd < 0) {
 			free(path);
@@ -160,8 +244,12 @@ void fileHandler(struct request request, struct response response) {
 			write(sockfd, &c, 1);
 
 		close(filefd);
-		close(sockfd);		
-	} else {
+		close(sockfd);
+
+		done = true;	
+	}
+
+	if (!done) {
 		status(request, response, 500);
 	}
 

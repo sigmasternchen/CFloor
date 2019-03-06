@@ -5,14 +5,18 @@
 #include "networking.h"
 #include "logging.h"
 #include "headers.h"
+#include "files.h"
 
 handler_t handlerGetter(struct metaData metaData, const char* host, struct bind* bind) {
-	return NULL;
+	return &fileHandler;
 }
 
 int main(int argc, char** argv) {
 	setLogging(stderr, DEBUG, true);
 	setCriticalHandler(NULL);
+
+	char* documentRoot = realpath(".", NULL);
+	files_init(documentRoot, true);
 
 	struct headers headers = headers_create();
 	headers_mod(&headers, "Server", "CFloor 0.1");
@@ -33,11 +37,12 @@ int main(int argc, char** argv) {
 		.getHandler = &handlerGetter
 	};
 
-	initNetworking(config);
+	networking_init(config);
 
 	while(true) {
 		sleep(0xffff);
 	}
 
 	headers_free(&headers);
+	free(documentRoot);
 }

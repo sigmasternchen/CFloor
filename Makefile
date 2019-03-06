@@ -1,11 +1,11 @@
 CC       = gcc
-CFLAGS   = -std=c99 -Wall -D_POSIX_C_SOURCE=201112L
+CFLAGS   = -std=c99 -Wall -D_POSIX_C_SOURCE=201112L -D_XOPEN_SOURCE=500 -D_GNU_SOURCE
 LD       = gcc
 LDFLAGS  = -lpthread -lrt
 
 BIN_NAME = cfloor
 
-OBJS     = obj/networking.o obj/linked.o obj/logging.o obj/signals.o obj/headers.o obj/misc.o obj/status.o
+OBJS     = obj/networking.o obj/linked.o obj/logging.o obj/signals.o obj/headers.o obj/misc.o obj/status.o obj/files.o obj/mime.o
 DEPS     = $(OBJS:%.o=%.d)
 
 all: $(BIN_NAME)

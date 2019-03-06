@@ -58,4 +58,6 @@ void* fileCopyThread(void* data);
 
 char* strclone(const char* string);
 
+int strlenOfNumber(long long number);
+
 #endif

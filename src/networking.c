@@ -625,7 +625,7 @@ void* listenThread(void* _bind) {
 	}
 }
 
-void initNetworking(struct networkingConfig _networkingConfig) {
+void networking_init(struct networkingConfig _networkingConfig) {
 	networkingConfig = _networkingConfig;
 
 	connectionList = linked_create();

@@ -54,3 +54,14 @@ char* strclone(const char* string) {
 	strcpy(result, string);
 	return result;
 }
+
+int strlenOfNumber(long long number) {
+	int result = 1;
+
+	while(number > 9) {
+		number /= 10;
+		result++;
+	}
+
+	return result;
+}	

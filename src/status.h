@@ -11,5 +11,6 @@ struct statusStrings {
 struct statusStrings getStatusStrings(int status);
 
 void status500(struct request request, struct response response);
+void status(struct request request, struct response response, int status);
 
 #endif

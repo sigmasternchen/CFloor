@@ -84,6 +84,6 @@ struct networkingConfig {
 
 #define TIMING_CLOCK CLOCK_REALTIME
 
-void initNetworking(struct networkingConfig networkingConfig);
+void networking_init(struct networkingConfig networkingConfig);
 
 #endif

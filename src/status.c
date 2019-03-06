@@ -334,6 +334,7 @@ struct statusStrings getStatusStrings(int status) {
 
 void status(struct request request, struct response response, int status) {
 	struct headers headers = headers_create();
+	headers_mod(&headers, "Content-Type", "text/html; charset=utf-8");
 	int fd = response.sendHeader(status, &headers, &request);
 	headers_free(&headers);
 
@@ -355,7 +356,7 @@ void status(struct request request, struct response response, int status) {
 	fprintf(stream, string.statusFormat, request.metaData.path);
 	fprintf(stream, "		<hr />\n");
 	fprintf(stream, "	</body>\n");
-	fprintf(stream, "<!DOCTYPE html>\n");
+	fprintf(stream, "</html>\n");
 
 	fclose(stream);
 }

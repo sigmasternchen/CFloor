@@ -3,6 +3,7 @@
 
 #include "headers.h"
 #include "misc.h"
+#include "logging.h"
 
 struct headers headers_create() {
 	return (struct headers) {
@@ -35,6 +36,8 @@ int headers_mod(struct headers* headers, const char* _key, const char* _value) {
 	if (tmp == NULL) {
 		return HEADERS_ALLOC_ERROR;
 	}
+
+
 	char* value = tmp;
 
 	int index = headers_find(headers, key);
@@ -202,11 +205,13 @@ int headers_metadata(struct metaData* metaData, char* header) {
 	if (path == NULL) {
 		return HEADERS_ALLOC_ERROR;
 	}
+	strcpy(path, _path);
 	char* queryString = malloc(strlen(_queryString) + 1);
 	if (queryString == NULL) {
 		free(path);
 		return HEADERS_ALLOC_ERROR;
 	}
+	strcpy(queryString, _queryString);
 	
 	metaData->method = method;
 	metaData->httpVersion = httpVersion;

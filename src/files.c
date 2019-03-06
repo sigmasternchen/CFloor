@@ -43,6 +43,8 @@ int scandirSort(const struct dirent** a, const struct dirent** b) {
 }
 
 int showIndex(int fd, const char* path) {
+	// TODO check for htmml entities
+
 	const char* relative = path + strlen(documentRoot);
 
 	struct dirent** list;

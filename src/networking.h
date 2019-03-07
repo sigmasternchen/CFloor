@@ -26,25 +26,13 @@ struct timing {
 	struct timespec lastUpdate;
 };
 
-struct bind_private {
-	pthread_t threadId;
-	int socketFd;
-};
-
-struct bind {
-	const char* address;
-	const char* port;
-	bool tls;
-	struct bind_private _private;
-};
-
-typedef handler_t (*handlerGetter_t)(struct metaData metaData, const char* host, struct bind* bind);
+typedef struct handler (*handlerGetter_t)(struct metaData metaData, const char* host, struct bind* bind);
 
 struct threads {
 	pthread_t request;
 	pthread_t response;
 	pthread_t helper[2];
-	handler_t handler;
+	struct handler handler;
 	int requestFd;
 	int responseFd;
 	int _requestFd;

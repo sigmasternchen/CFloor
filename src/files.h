@@ -6,8 +6,13 @@
 #include "files.h"
 #include "misc.h"
 
-void files_init(const char* documentRoot, bool index);
+struct fileSettings {
+	const char* documentRoot;
+	bool index;
+};
 
 void fileHandler(struct request request, struct response response);
+
+char* normalizePath(struct request request, struct response response, const char* documentRoot);
 
 #endif

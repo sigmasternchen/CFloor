@@ -16,14 +16,6 @@
 #include "status.h"
 #include "mime.h"
 
-const char* documentRoot = NULL;
-bool indexes = false;
-
-// _documentRoot had to be a realpath
-void files_init(const char* _documentRoot, bool _index) {
-	documentRoot = _documentRoot;
-	indexes = _index;
-}
 
 int scandirFiler(const struct dirent* entry) {
 	if (strcmp(entry->d_name, "..") == 0)
@@ -42,7 +34,7 @@ int scandirSort(const struct dirent** a, const struct dirent** b) {
 	return strcmp((*a)->d_name, (*b)->d_name); 
 }
 
-int showIndex(int fd, const char* path) {
+int showIndex(int fd, const char* path, const char* documentRoot) {
 	// TODO check for htmml entities
 
 	const char* relative = path + strlen(documentRoot);
@@ -114,71 +106,13 @@ void fuckyouHandler(struct request request, struct response response) {
 }
 
 void fileHandler(struct request request, struct response response) {
-	if (documentRoot == NULL) {
-		error("files: No document root given.");
-		status(request, response, 500);
+	struct fileSettings* settings = (struct fileSettings*) request.userData.ptr;
+	const char* documentRoot = settings->documentRoot;
+	bool indexes = settings->index;
+
+	char* path = normalizePath(request, response, documentRoot);
+	if (path == NULL)
 		return;
-	}
-	
-	char* path = request.metaData.path;
-
-	char* tmp = malloc(strlen(path) + 1 + strlen(documentRoot) + 1);
-	if (tmp == NULL) {
-		error("files: Couldn't malloc for path construction: %s", strerror(errno));
-		status(request, response, 500);
-		return;
-	}
-	strcpy(tmp, documentRoot);
-	strcat(tmp, "/");
-	strcat(tmp, path);
-	path = realpath(tmp, NULL);
-	if (path == NULL) {
-		free(tmp);
-		switch(errno) {
-			case EACCES:
-				status(request, response, 403);
-				return;
-			case ENOENT:
-			case ENOTDIR:
-				status(request, response, 404);
-				return;
-			default:
-				warn("files: Couldn't get constructed realpath: %s", strerror(errno));
-				status(request, response, 500);
-				return;
-		}
-		status(request, response, 500);
-		return;
-	}
-	free(tmp);
-
-	info("files: file path is: %s", path);
-
-	if (strncmp(documentRoot, path, strlen(documentRoot)) != 0) {
-		free(path);
-		warn("files: Requested path not in document root.");
-		fuckyouHandler(request, response);
-
-		return;
-	}
-
-	if (access(path, F_OK | R_OK) < 0) {
-		free(path);
-		
-		switch(errno) {
-			case EACCES:
-				status(request, response, 403);
-				return;
-			case ENOENT:
-			case ENOTDIR:
-				status(request, response, 404);
-				return;
-			default:
-				warn("files: Couldn't access file: %s", strerror(errno));
-				status(request, response, 500);
-				return;
-		}
-	}
 
 	struct stat statObj;
 	if (stat(path, &statObj) < 0) {
@@ -205,7 +139,7 @@ void fileHandler(struct request request, struct response response) {
 		int fd = response.sendHeader(200, &headers, &request);
 		headers_free(&headers);
 
-		if (showIndex(fd, path) < 0) {
+		if (showIndex(fd, path, documentRoot) < 0) {
 			// TODO error
 		}
 		
@@ -222,7 +156,7 @@ void fileHandler(struct request request, struct response response) {
 
 		off_t size = statObj.st_size;
 		int length = strlenOfNumber(size);
-		tmp = malloc(length + 1);
+		char* tmp = malloc(length + 1);
 		if (tmp == NULL) {
 			free(path);
 			close(filefd);
@@ -256,4 +190,74 @@ void fileHandler(struct request request, struct response response) {
 	}
 
 	free(path);
+}
+
+char* normalizePath(struct request request, struct response response, const char* documentRoot) {
+	if (documentRoot == NULL) {
+		error("files: No document root given.");
+		status(request, response, 500);
+		return NULL;
+	}
+
+	char* path = request.metaData.path;
+
+	char* tmp = malloc(strlen(path) + 1 + strlen(documentRoot) + 1);
+	if (tmp == NULL) {
+		error("files: Couldn't malloc for path construction: %s", strerror(errno));
+		status(request, response, 500);
+		return NULL;
+	}
+	strcpy(tmp, documentRoot);
+	strcat(tmp, "/");
+	strcat(tmp, path);
+	path = realpath(tmp, NULL);
+	if (path == NULL) {
+		free(tmp);
+		switch(errno) {
+			case EACCES:
+				status(request, response, 403);
+				return NULL;
+			case ENOENT:
+			case ENOTDIR:
+				status(request, response, 404);
+				return NULL;
+			default:
+				warn("files: Couldn't get constructed realpath: %s", strerror(errno));
+				status(request, response, 500);
+				return NULL;
+		}
+		status(request, response, 500);
+		return NULL;
+	}
+	free(tmp);
+
+	info("files: file path is: %s", path);
+
+	if (strncmp(documentRoot, path, strlen(documentRoot)) != 0) {
+		free(path);
+		warn("files: Requested path not in document root.");
+		fuckyouHandler(request, response);
+
+		return NULL;
+	}
+
+	if (access(path, F_OK | R_OK) < 0) {
+		free(path);
+		
+		switch(errno) {
+			case EACCES:
+				status(request, response, 403);
+				return NULL;
+			case ENOENT:
+			case ENOTDIR:
+				status(request, response, 404);
+				return NULL;
+			default:
+				warn("files: Couldn't access file: %s", strerror(errno));
+				status(request, response, 500);
+				return NULL;
+		}
+	}
+
+	return path;
 }

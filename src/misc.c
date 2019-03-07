@@ -64,4 +64,4 @@ int strlenOfNumber(long long number) {
 	}
 
 	return result;
-}	
+}

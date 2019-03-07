@@ -33,12 +33,26 @@ union userData {
 	void* ptr;
 };
 
+struct bind_private {
+	pthread_t threadId;
+	int socketFd;
+};
+
+struct bind {
+	const char* address;
+	const char* port;
+	bool tls;
+	union userData settings;
+	struct bind_private _private;
+};
+
 struct request {
 	struct metaData metaData;
 	struct headers* headers;
+	struct bind bind;
 	int fd;
+	union userData userData;
 	void* _private;
-	union userData user;
 };
 
 struct response {
@@ -47,6 +61,10 @@ struct response {
 
 typedef void (*handler_t)(struct request request, struct response response);
 
+struct handler {
+	handler_t handler;
+	union userData data;
+};
 
 struct fileCopy {
 	int readFd;

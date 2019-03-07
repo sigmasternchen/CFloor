@@ -7,8 +7,20 @@
 #include "headers.h"
 #include "files.h"
 
-handler_t handlerGetter(struct metaData metaData, const char* host, struct bind* bind) {
-	return &fileHandler;
+struct handlerSettings {
+	struct fileSettings fileSettings;
+};
+
+struct handler handlerGetter(struct metaData metaData, const char* host, struct bind* bind) {
+	struct handlerSettings* settings = (struct handlerSettings*) bind->settings.ptr;
+
+	union userData data;
+	data.ptr = &(settings->fileSettings);
+
+	return (struct handler) {
+		.handler = &fileHandler,
+		.data = data
+	};
 }
 
 int main(int argc, char** argv) {
@@ -16,7 +28,15 @@ int main(int argc, char** argv) {
 	setCriticalHandler(NULL);
 
 	char* documentRoot = realpath(".", NULL);
-	files_init(documentRoot, true);
+
+	struct handlerSettings handlerSettings = {
+		.fileSettings =  {
+			.documentRoot = documentRoot,
+			.index = true	
+		}
+	};
+	union userData settingsData;
+	settingsData.ptr = &handlerSettings;
 
 	struct headers headers = headers_create();
 	headers_mod(&headers, "Server", "CFloor 0.1");
@@ -29,7 +49,8 @@ int main(int argc, char** argv) {
 			.binds = (struct bind[]) {
 				{
 					.address = "0.0.0.0",
-					.port = "1337"
+					.port = "1337",
+					.settings = settingsData
 				}
 			}
 		},

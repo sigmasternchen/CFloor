@@ -222,10 +222,11 @@ void* responseThread(void* data) {
 
 	debug("networking: calling response handler");
 
-	connection->threads.handler((struct request) {
+	connection->threads.handler.handler((struct request) {
 		.metaData = connection->metaData,
 		.headers = &(connection->headers),
 		.fd = connection->threads.requestFd,
+		.userData = connection->threads.handler.data,
 		._private = connection 
 	}, (struct response) {
 		.sendHeader = sendHeader
@@ -252,10 +253,11 @@ void* requestThread(void* data) {
 
 	signal_block_all();
 
-	handler_t handler = networkingConfig.getHandler(connection->metaData, headers_get(&(connection->headers), "Host"), connection->bind);
+	struct handler handler = networkingConfig.getHandler(connection->metaData, headers_get(&(connection->headers), "Host"), connection->bind);
 
-	if (handler == NULL) {
-		handler = status500;
+	if (handler.handler == NULL) {
+		handler.handler = status500;
+		handler.data.ptr = NULL;
 	}
 
 	connection->threads.handler = handler;
@@ -602,7 +604,7 @@ void* listenThread(void* _bind) {
 			 */
 			.request = 0,
 			.response = 0,
-			.handler = NULL,
+			.handler = {},
 			.requestFd = -1,
 			.responseFd = -1,
 			._requestFd = -1,

@@ -114,7 +114,7 @@ void fileHandler(struct request request, struct response response) {
 	if (path == NULL)
 		return;
 
-	struct stat statObj;
+	struct stat statObj, statObjFile;
 	if (stat(path, &statObj) < 0) {
 		free(path);
 
@@ -129,21 +129,54 @@ void fileHandler(struct request request, struct response response) {
 	if (S_ISDIR(statObj.st_mode)) {
 		// TODO check for index files
 
-		if (!indexes) {
-			status(request, response, 403);
-			return;
+		char* filepath = NULL;
+		for (int i = 0; i < settings->indexfiles.number; i++) {
+			filepath = malloc(strlen(path) + 1 + strlen(settings->indexfiles.files[i]) + 1);
+			if (filepath == NULL) {
+				error("files: Couldn't allocate memory for index file check: %s", strerror(errno));
+				warn("files: ignoring");
+				continue;
+			}
+			strcpy(filepath, path);
+			strcat(filepath, "/");
+			strcat(filepath, settings->indexfiles.files[i]);
+
+			debug("files: searching for index: %s", filepath);
+
+			if (access(filepath, F_OK | R_OK) == 0 && stat(filepath, &statObjFile) == 0) {
+				if (S_ISREG(statObjFile.st_mode)) {
+					break;
+				}
+			}
+			free(filepath);
+			filepath = NULL;
 		}
 
-		struct headers headers = headers_create();
-		headers_mod(&headers, "Content-Type", "text/html; charset=utf-8");
-		int fd = response.sendHeader(200, &headers, &request);
-		headers_free(&headers);
+		if (filepath != NULL) {
+			debug("files: found index file: %s", filepath);
+			overrideStat = true;
+			free(path);
+			path = filepath;
+			statObj = statObjFile;
+		} else {
 
-		if (showIndex(fd, path, documentRoot) < 0) {
-			// TODO error
-		}
+			if (!indexes) {
+				free(path);
+				status(request, response, 403);
+				return;
+			}
+
+			struct headers headers = headers_create();
+			headers_mod(&headers, "Content-Type", "text/html; charset=utf-8");
+			int fd = response.sendHeader(200, &headers, &request);
+			headers_free(&headers);
+
+			if (showIndex(fd, path, documentRoot) < 0) {
+				// TODO error
+			}
 		
-		done = true;
+			done = true;
+		}
 	}
 
 	if (S_ISREG(statObj.st_mode) || overrideStat) {

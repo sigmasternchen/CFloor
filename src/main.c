@@ -46,7 +46,14 @@ int main(int argc, char** argv) {
 	struct handlerSettings handlerSettings = {
 		.fileSettings =  {
 			.documentRoot = documentRoot,
-			.index = true	
+			.index = true,
+			.indexfiles = {
+				.number = 2,
+				.files = (const char* []) {
+					"index.html",
+					"index.htm"
+				}
+			}	
 		},
 		.cgiSettings = {
 			.documentRoot = documentRoot

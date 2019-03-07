@@ -9,6 +9,10 @@
 struct fileSettings {
 	const char* documentRoot;
 	bool index;
+	struct {
+		int number;
+		const char** files;
+	} indexfiles;
 };
 
 void fileHandler(struct request request, struct response response);

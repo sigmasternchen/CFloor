@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <arpa/inet.h>
 
 #include "networking.h"
 #include "linked.h"
@@ -100,6 +101,9 @@ void cleanup() {
 			headers_free(&(connection->headers));
 
 			close(connection->fd);
+
+			if (connection->peer.name != NULL)
+				free(connection->peer.name);
 
 			free(connection);
 
@@ -226,6 +230,7 @@ void* responseThread(void* data) {
 		.metaData = connection->metaData,
 		.headers = &(connection->headers),
 		.fd = connection->threads.requestFd,
+		.peer = connection->peer,
 		.userData = connection->threads.handler.data,
 		._private = connection 
 	}, (struct response) {
@@ -552,8 +557,8 @@ void* listenThread(void* _bind) {
 	freeaddrinfo(result);
 
 	while(true) {
-		struct sockaddr_in client;
-		socklen_t clientSize = sizeof (struct sockaddr_in);
+		struct sockaddr_storage client;
+		socklen_t clientSize = sizeof (client);
 
 		tmp = accept(bindObj->_private.socketFd, (struct sockaddr *) &client, &clientSize);
 		if (tmp < 0) {
@@ -588,8 +593,41 @@ void* listenThread(void* _bind) {
 			continue;
 		}
 
+		
+		struct peer peer;
+		int family = client.ss_family;
+		void* addrPtr;
+
+		if (family == AF_INET)
+			addrPtr = &(((struct sockaddr_in*) &(client))->sin_addr);
+		else if (family == AF_INET6)		
+			addrPtr = &(((struct sockaddr_in*) &(client))->sin_addr);
+
+		if (inet_ntop(family, addrPtr, &(peer.addr[0]), INET6_ADDRSTRLEN + 1) == NULL) {
+			error("networking: Couldn't set peer addr string: %s", strerror(errno));
+			return NULL;
+		}
+
+		struct hostent entry;
+		struct hostent* result;
+		int h_errno;
+
+		#define LOCAL_BUFFER_SIZE (128)	
+		char buffer[LOCAL_BUFFER_SIZE];
+
+		gethostbyaddr_r(&(client), sizeof(client), family, &entry, &(buffer[0]), LOCAL_BUFFER_SIZE, &result, &h_errno);
+		if (result == NULL) {
+			peer.name = strclone("");
+		} else {
+			peer.name = strclone(entry.h_name);
+			if (peer.name == NULL) {
+				error("networking: Couldn't strclone hostname: %s", strerror(errno));
+				peer.name = strclone("");
+			}
+		}
+
 		connection->state = OPENED;
-		connection->client = client;
+		connection->peer = peer;
 		connection->bind = bindObj;
 		connection->fd = tmp;
 		connection->metaData = (struct metaData) {

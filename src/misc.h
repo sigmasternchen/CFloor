@@ -5,6 +5,8 @@
 
 #include <pthread.h>
 
+#include <arpa/inet.h>
+
 enum method {
 	GET, POST, PUT
 };
@@ -46,8 +48,15 @@ struct bind {
 	struct bind_private _private;
 };
 
+struct peer {
+	// INET6_ADDRSTRLEN should be enough
+	char addr[INET6_ADDRSTRLEN + 1];
+	char* name;
+};
+
 struct request {
 	struct metaData metaData;
+	struct peer peer;
 	struct headers* headers;
 	struct bind bind;
 	int fd;

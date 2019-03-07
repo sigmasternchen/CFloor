@@ -41,7 +41,7 @@ struct threads {
 
 struct connection {
 	enum connectionState state;
-	struct sockaddr_in client;
+	struct peer peer;
 	struct bind* bind;
 	volatile sig_atomic_t inUse;
 	int fd;

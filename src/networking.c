@@ -598,10 +598,13 @@ void* listenThread(void* _bind) {
 		int family = client.ss_family;
 		void* addrPtr;
 
-		if (family == AF_INET)
-			addrPtr = &(((struct sockaddr_in*) &(client))->sin_addr);
-		else if (family == AF_INET6)		
-			addrPtr = &(((struct sockaddr_in*) &(client))->sin_addr);
+		if (family == AF_INET) {
+			addrPtr = &(((struct sockaddr_in*) &client)->sin_addr);
+			peer.port = ntohs(((struct sockaddr_in*) &client)->sin_port);
+		} else if (family == AF_INET6) {
+			addrPtr = &(((struct sockaddr_in6*) &client)->sin6_addr);
+			peer.port = ntohs(((struct sockaddr_in6*) &client)->sin6_port);
+		}
 
 		if (inet_ntop(family, addrPtr, &(peer.addr[0]), INET6_ADDRSTRLEN + 1) == NULL) {
 			error("networking: Couldn't set peer addr string: %s", strerror(errno));
@@ -615,7 +618,7 @@ void* listenThread(void* _bind) {
 		#define LOCAL_BUFFER_SIZE (128)	
 		char buffer[LOCAL_BUFFER_SIZE];
 
-		gethostbyaddr_r(&(client), sizeof(client), family, &entry, &(buffer[0]), LOCAL_BUFFER_SIZE, &result, &h_errno);
+		gethostbyaddr_r(&client, sizeof(client), family, &entry, &(buffer[0]), LOCAL_BUFFER_SIZE, &result, &h_errno);
 		if (result == NULL) {
 			peer.name = strclone("");
 		} else {
@@ -625,6 +628,8 @@ void* listenThread(void* _bind) {
 				peer.name = strclone("");
 			}
 		}
+
+		snprintf(&(peer.portStr[0]), 5 + 1, "%d", peer.port);
 
 		connection->state = OPENED;
 		connection->peer = peer;

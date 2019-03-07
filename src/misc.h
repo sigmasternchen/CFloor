@@ -8,7 +8,7 @@
 #include <arpa/inet.h>
 
 enum method {
-	GET, POST, PUT
+	GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH 
 };
 
 enum httpVersion {
@@ -52,6 +52,8 @@ struct peer {
 	// INET6_ADDRSTRLEN should be enough
 	char addr[INET6_ADDRSTRLEN + 1];
 	char* name;
+	int port;
+	char portStr[5 + 1];
 };
 
 struct request {

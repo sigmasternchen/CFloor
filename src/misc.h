@@ -29,8 +29,6 @@ struct metaData {
  */
 #include "headers.h"
 
-const char* getHTTPVersionString(enum httpVersion version);
-
 union userData {
 	int integer;
 	void* ptr;

@@ -209,7 +209,7 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 
 	struct statusStrings strings = getStatusStrings(statusCode);
 
-	fprintf(stream, "%s %d %s\r\n", getHTTPVersionString(connection->metaData.httpVersion), statusCode, strings.statusString);
+	fprintf(stream, "%s %d %s\r\n", protocolString(connection->metaData), statusCode, strings.statusString);
 
 	headers_dump(headers, stream);
 

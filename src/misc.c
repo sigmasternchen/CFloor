@@ -8,17 +8,6 @@
 
 #include "misc.h"
 
-const char* getHTTPVersionString(enum httpVersion version) {
-	switch(version) {
-		case HTTP10:
-			return "HTTP/1.0";
-		case HTTP11:
-			return "HTTP/1.1";
-		default:
-			return "UNKNOWN";
-	}
-}
-
 int startCopyThread(int from, int to, bool closeWriteFd, pthread_t* thread) {
 	struct fileCopy* files = malloc(sizeof(struct fileCopy));
 	if (files < 0)

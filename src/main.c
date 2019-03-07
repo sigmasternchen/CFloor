@@ -1,39 +1,57 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <string.h>
 
 #include "networking.h"
 #include "logging.h"
 #include "headers.h"
 #include "files.h"
+#include "cgi.h"
 
 struct handlerSettings {
 	struct fileSettings fileSettings;
+	struct cgiSettings cgiSettings;
+	const char* cgiBin;
 };
 
 struct handler handlerGetter(struct metaData metaData, const char* host, struct bind* bind) {
 	struct handlerSettings* settings = (struct handlerSettings*) bind->settings.ptr;
 
 	union userData data;
-	data.ptr = &(settings->fileSettings);
 
-	return (struct handler) {
-		.handler = &fileHandler,
-		.data = data
-	};
+	if (strncmp(metaData.path, settings->cgiBin, strlen(settings->cgiBin)) == 0) {
+		data.ptr = &(settings->cgiSettings);
+
+		return (struct handler) {
+			.handler = &cgiHandler,
+			.data = data
+		};
+	} else {
+		data.ptr = &(settings->fileSettings);
+
+		return (struct handler) {
+			.handler = &fileHandler,
+			.data = data
+		};
+	}
 }
 
 int main(int argc, char** argv) {
 	setLogging(stderr, DEBUG, true);
 	setCriticalHandler(NULL);
 
-	char* documentRoot = realpath(".", NULL);
+	char* documentRoot = realpath("./home/", NULL);
 
 	struct handlerSettings handlerSettings = {
 		.fileSettings =  {
 			.documentRoot = documentRoot,
 			.index = true	
-		}
+		},
+		.cgiSettings = {
+			.documentRoot = documentRoot
+		},
+		.cgiBin = "/cgi-bin/"
 	};
 	union userData settingsData;
 	settingsData.ptr = &handlerSettings;

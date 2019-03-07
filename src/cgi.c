@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 
 #include "cgi.h"
 #include "misc.h"
@@ -47,6 +48,24 @@ void cgiHandler(struct request request, struct response response) {
 		}
 	}
 
+	struct stat statObj;
+	if (stat(path, &statObj) < 0) {
+		free(path);
+
+		error("cgi: Couldn't stat file: %s", strerror(errno));
+		status(request, response, 500);		
+		return;
+	}
+
+	if (!S_ISREG(statObj.st_mode)) {
+		free(path);
+		
+		error("cgi: Not a regular file");
+		status(request, response, 403);
+		return;
+	}
+
+
 	int pipefd[2];
 
 	if (pipe(&(pipefd[0])) < 0) {
@@ -61,10 +80,12 @@ void cgiHandler(struct request request, struct response response) {
 	if (pid < 0) {
 		error("cgi: failed to fork: %s", strerror(errno));
 		status(request, response, 500);
-	} else if (pid > 0) {
+	} else if (pid == 0) {
 		// child
 		// logging is thread-only
 		// so no logging from here on out.
+			
+		close(pipefd[0]);
 
 		if (dup2(request.fd, 0) < 0) {
 			exit(EXIT_EXEC_FAILED);
@@ -112,15 +133,16 @@ void cgiHandler(struct request request, struct response response) {
 
 		exit(EXIT_EXEC_FAILED);
 	} else {
-		// parent
+		// this is the parent, but the child can't talk for itself
 		info("cgi: child started successfully");
+
+		close(pipefd[1]);
 		
 		#define LOCAL_BUFFER_LENGTH (512)
 
 		char buffer[LOCAL_BUFFER_LENGTH];
 		int bufferIndex = 0;
 
-		int statusCode = 0;
 		bool wasLineEnd = false;
 		bool finished = false;
 
@@ -141,21 +163,14 @@ void cgiHandler(struct request request, struct response response) {
 				}
 
 				buffer[bufferIndex] = '\0';
-				bufferIndex = 0;
 
-				if (statusCode == 0) {
-					char* endptr;
-
-					statusCode = strtol(&(buffer[0]), &endptr, 10);
-
-					if (endptr != '\0') {
-						malformed = true;
-					}
-				} else {
-					if (headers_parse(&headers, &(buffer[0]), bufferIndex) < 0) {
-						malformed = true;
-					}
+				int tmp = headers_parse(&headers, &(buffer[0]), bufferIndex);
+				if (tmp < 0) {
+					debug("cgi: error parsing header: '%s'", buffer);
+					malformed = true;
 				}
+
+				bufferIndex = 0;
 
 				wasLineEnd = true;
 			} else {
@@ -172,6 +187,22 @@ void cgiHandler(struct request request, struct response response) {
 			}
 		}
 
+		int statusCode = 200;
+
+		const char* statusLine = headers_get(&headers, "Status");
+		if (statusLine != NULL) {
+			char* endptr;
+
+			statusCode = strtol(statusLine, &endptr, 10);
+
+			if ((statusCode < 100) || (statusCode > 600)) {
+				error("cgi: malformed status code: %s", statusLine);
+				finished = false;
+			} else {
+				headers_remove(&headers, "Status");
+			}
+		}
+
 		if (!finished) {
 			error("cgi: error while reading header");
 
@@ -179,7 +210,6 @@ void cgiHandler(struct request request, struct response response) {
 			waitpid(pid, &statusCode, 0);
 
 			close(pipefd[0]);
-			close(pipefd[1]);
 
 			status(request, response, 500);
 			
@@ -188,22 +218,23 @@ void cgiHandler(struct request request, struct response response) {
 			
 			return;
 		}
-	
-		close(pipefd[0]);
 
 		int fd = response.sendHeader(statusCode, &headers, &request);
 
 		headers_free(&headers);
 
-		// start copy thread
-
 		free(path);
+
+		pthread_t copyThread;
+
+		startCopyThread(pipefd[0], fd, true, &copyThread);
 
 		if (waitpid(pid, &statusCode, 0) < 1) {
 			error("cgi: error while waiting for child: %s", strerror(errno));
 			status(request, response, 500);
 
-			free(path);
+			pthread_cancel(copyThread);
+
 			return;
 		}
 
@@ -213,8 +244,12 @@ void cgiHandler(struct request request, struct response response) {
 		if (statusCode == EXIT_EXEC_FAILED) {
 			error("cgi: child exit code indicates that exec failed");
 			status(request, response, 500);
-
-			return;
 		}
+
+		debug("cgi: fork returned with status %d", statusCode);
+
+		pthread_join(copyThread, NULL);
+
+		return;
 	}
 }

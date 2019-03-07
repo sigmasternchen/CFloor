@@ -21,7 +21,7 @@ struct mime {
 			"css"
 		}
 	},{
-		.mime = "application/html",
+		.mime = "text/html",
 		.number = 2,
 		.extensions = (const char* []) {
 			"html",

@@ -26,6 +26,20 @@ const char* headers_get(struct headers* headers, const char* key) {
 	return headers->headers[tmp].value;
 }
 
+int headers_remove(struct headers* headers, const char* key) {
+	int tmp = headers_find(headers, key);
+	if (tmp < 0)
+		return -1;
+	struct header header = headers->headers[tmp];
+	memmove(headers->headers + tmp * sizeof(struct header), headers->headers + (tmp + 1) * sizeof(struct header), sizeof(struct header) * (headers->number - tmp - 1));
+	headers->number--;
+
+	free(header.key);
+	free(header.value);
+
+	return 0;
+}
+
 int headers_mod(struct headers* headers, const char* _key, const char* _value) {
 	char* tmp = strclone(_key);
 	if (tmp == NULL) {

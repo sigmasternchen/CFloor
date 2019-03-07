@@ -22,6 +22,7 @@ struct headers {
 
 struct headers headers_create();
 const char* headers_get(struct headers* headers, const char* key);
+int headers_remove(struct headers* headers, const char* key);
 int headers_mod(struct headers* headers, const char* key, const char* value);
 int headers_parse(struct headers* headers, const char* currentHeader, size_t length);
 void headers_free(struct headers* headers);

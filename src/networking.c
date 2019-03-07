@@ -391,8 +391,6 @@ void dataHandler(int signo) {
 					break;
 				}
 
-				debug("networking: header: %s", connection->currentHeader);
-
 				// \r is in the buffer
 				connection->currentHeaderLength--;
 				connection->currentHeader[connection->currentHeaderLength] = '\0';
@@ -532,6 +530,10 @@ void* listenThread(void* _bind) {
 			continue;
 
 		if (setsockopt(tmp, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0) {
+			close(tmp);
+			continue;
+		}
+		if (setsockopt(tmp, SOL_SOCKET, SO_REUSEPORT, &(int){ 1 }, sizeof(int)) < 0) {
 			close(tmp);
 			continue;
 		}

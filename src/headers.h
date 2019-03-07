@@ -29,4 +29,6 @@ void headers_dump(struct headers* headers, FILE* stream);
 
 int headers_metadata(struct metaData* metaData, char* header);
 
+const char* methodString(struct metaData metaData);
+
 #endif

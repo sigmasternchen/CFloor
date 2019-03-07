@@ -186,10 +186,22 @@ int headers_metadata(struct metaData* metaData, char* header) {
 
 	if (strcmp(_method, "GET") == 0)
 		method = GET;
+	else if (strcmp(_method, "HEAD") == 0)
+		method = HEAD;
 	else if (strcmp(_method, "POST") == 0)
 		method = POST;
 	else if (strcmp(_method, "PUT") == 0)
 		method = PUT;
+	else if (strcmp(_method, "DELETE") == 0)
+		method = DELETE;
+	else if (strcmp(_method, "CONNECT") == 0)
+		method = CONNECT;
+	else if (strcmp(_method, "OPTION") == 0)
+		method = OPTION;
+	else if (strcmp(_method, "TRACE") == 0)
+		method = TRACE;
+	else if (strcmp(_method, "PATCH") == 0)
+		method = PATCH;
 	else
 		return HEADERS_PARSE_ERROR;
 
@@ -219,4 +231,31 @@ int headers_metadata(struct metaData* metaData, char* header) {
 	metaData->queryString = queryString;
 
 	return HEADERS_SUCCESS;
+}
+
+const char* methodString(struct metaData metaData) {
+	switch(metaData.method) {
+		case GET:
+			return "GET";
+		case HEAD:
+			return "HEAD";
+		case POST:
+			return "POST";
+		case POST:
+			return "POST";
+		case PUT:
+			return "PUT";
+		case DELETE:
+			return "DELETE";
+		case CONNECT:
+			return "CONNECT";
+		case OPTION:
+			return "OPTION";
+		case TRACE:
+			return "TRACE";
+		case PATCH:
+			return "PATCH";
+		default:
+			return NULL
+	}
 }

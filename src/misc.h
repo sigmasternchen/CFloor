@@ -11,13 +11,13 @@ enum method {
 	GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH 
 };
 
-enum httpVersion {
+enum protocol {
 	HTTP10, HTTP11
 };
 
 struct metaData {
 	enum method method;
-	enum httpVersion httpVersion;
+	enum protocol protocol;
 	char* path;
 	char* queryString;
 	char* uri;

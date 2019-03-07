@@ -166,8 +166,8 @@ int headers_metadata(struct metaData* metaData, char* header) {
 	char* _path = strtok(NULL, " ");
 	if (_path == NULL)
 		return HEADERS_PARSE_ERROR;
-	char* _httpVersion = strtok(NULL, " ");
-	if (_httpVersion == NULL)
+	char* _protocol = strtok(NULL, " ");
+	if (_protocol == NULL)
 		return HEADERS_PARSE_ERROR;
 
 	char* _null = strtok(NULL, " ");
@@ -205,11 +205,11 @@ int headers_metadata(struct metaData* metaData, char* header) {
 	else
 		return HEADERS_PARSE_ERROR;
 
-	enum httpVersion httpVersion;
-	if (strcmp(_httpVersion, "HTTP/1.0") == 0)
-		httpVersion = HTTP10;
-	else if (strcmp(_httpVersion, "HTTP/1.1") == 0)
-		httpVersion = HTTP11;
+	enum protocol protocol;
+	if (strcmp(_protocol, "HTTP/1.0") == 0)
+		protocol = HTTP10;
+	else if (strcmp(_protocol, "HTTP/1.1") == 0)
+		protocol = HTTP11;
 	else
 		return HEADERS_PARSE_ERROR;
 
@@ -236,7 +236,7 @@ int headers_metadata(struct metaData* metaData, char* header) {
 	strcat(uri, queryString);
 	
 	metaData->method = method;
-	metaData->httpVersion = httpVersion;
+	metaData->protocol = protocol;
 	metaData->path = path;
 	metaData->queryString = queryString;
 	metaData->uri = uri;
@@ -264,6 +264,17 @@ const char* methodString(struct metaData metaData) {
 			return "TRACE";
 		case PATCH:
 			return "PATCH";
+		default:
+			return NULL;
+	}
+}
+
+const char* protocolString(struct metaData metaData) {
+	switch(metaData.protocol) {
+		case HTTP10:
+			return "HTTP/1.0";
+		case HTTP11:
+			return "HTTP/1.1";
 		default:
 			return NULL;
 	}

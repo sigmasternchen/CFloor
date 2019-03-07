@@ -196,8 +196,8 @@ int headers_metadata(struct metaData* metaData, char* header) {
 		method = DELETE;
 	else if (strcmp(_method, "CONNECT") == 0)
 		method = CONNECT;
-	else if (strcmp(_method, "OPTION") == 0)
-		method = OPTION;
+	else if (strcmp(_method, "OPTIONS") == 0)
+		method = OPTIONS;
 	else if (strcmp(_method, "TRACE") == 0)
 		method = TRACE;
 	else if (strcmp(_method, "PATCH") == 0)
@@ -224,11 +224,22 @@ int headers_metadata(struct metaData* metaData, char* header) {
 		return HEADERS_ALLOC_ERROR;
 	}
 	strcpy(queryString, _queryString);
+
+	char* uri = malloc(strlen(_path) + 1 + strlen(_queryString) + 1);
+	if (uri == NULL) {
+		free(path);
+		free(queryString);
+		return HEADERS_ALLOC_ERROR;
+	}
+	strcpy(uri, path);
+	strcat(uri, "?");
+	strcat(uri, queryString);
 	
 	metaData->method = method;
 	metaData->httpVersion = httpVersion;
 	metaData->path = path;
 	metaData->queryString = queryString;
+	metaData->uri = uri;
 
 	return HEADERS_SUCCESS;
 }
@@ -241,21 +252,19 @@ const char* methodString(struct metaData metaData) {
 			return "HEAD";
 		case POST:
 			return "POST";
-		case POST:
-			return "POST";
 		case PUT:
 			return "PUT";
 		case DELETE:
 			return "DELETE";
 		case CONNECT:
 			return "CONNECT";
-		case OPTION:
-			return "OPTION";
+		case OPTIONS:
+			return "OPTIONS";
 		case TRACE:
 			return "TRACE";
 		case PATCH:
 			return "PATCH";
 		default:
-			return NULL
+			return NULL;
 	}
 }

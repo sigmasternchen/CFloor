@@ -20,6 +20,7 @@ struct metaData {
 	enum httpVersion httpVersion;
 	char* path;
 	char* queryString;
+	char* uri;
 };
 
 /*

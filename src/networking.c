@@ -95,6 +95,8 @@ void cleanup() {
 				free(connection->metaData.path);
 			if (connection->metaData.queryString != NULL)
 				free(connection->metaData.queryString);
+			if (connection->metaData.uri != NULL)
+				free(connection->metaData.uri);
 			if (connection->currentHeader != NULL)
 				free(connection->currentHeader);
 

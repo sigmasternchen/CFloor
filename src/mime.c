@@ -107,6 +107,68 @@ struct mime {
 		.extensions = (const char* []) {
 			"webm"
 		}
+	},{
+		.mime = "audio/aac",
+		.number = 1,
+		.extensions = (const char* []) {
+			"aac"
+		}
+	},{
+		.mime = "text/plain",
+		.number = 1,
+		.extensions = (const char* []) {
+			"txt"
+		}
+	},{
+		.mime = "audio/ogg",
+		.number = 2,
+		.extensions = (const char* []) {
+			"oga",
+			"ogg"
+		}
+	},{
+		.mime = "video/ogg",
+		.number = 1,
+		.extensions = (const char* []) {
+			"ogv"
+		}
+	},{
+		.mime = "image/tiff",
+		.number = 2,
+		.extensions = (const char* []) {
+			"tif",
+			"tiff"
+		}
+	},{
+		.mime = "audio/wav",
+		.number = 1,
+		.extensions = (const char* []) {
+			"wav"
+		}
+	},{
+		.mime = "audio/webm",
+		.number = 1,
+		.extensions = (const char* []) {
+			"weba"
+		}
+	},{
+		.mime = "image/webm",
+		.number = 1,
+		.extensions = (const char* []) {
+			"webp"
+		}
+	},{
+		.mime = "application/xhtml+xml",
+		.number = 1,
+		.extensions = (const char* []) {
+			"xhtml"
+		}
+	},{
+		.mime = "audio/aac",
+		.number = 1,
+		.extensions = (const char* []) {
+			"aac"
+		}
 	},
 };
 

@@ -35,6 +35,9 @@ int scandirSort(const struct dirent** a, const struct dirent** b) {
 }
 
 void freeDirent(struct dirent** list, int number) {
+	if (list == NULL || number == 0)
+		return;
+
 	for(int i = 0; i < number; i++) {
 		free(list[i]);
 	}
@@ -88,7 +91,6 @@ int showIndex(int fd, const char* path, const char* documentRoot) {
 	fprintf(stream, "	</body>\n");
 	fprintf(stream, "</html>\n");
 
-	free(list);
 	fclose(stream);
 
 	freeDirent(list, number);

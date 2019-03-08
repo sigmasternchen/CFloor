@@ -8,21 +8,122 @@
 #include <pthread.h>
 
 #include "util.h"
+#include "logging.h"
 
-bool isInDir(const char* file, const char* dir) {
+void strremove(char* string, int index, int number) {
+	int length = strlen(string);
+
+	if (number + index > length)
+		number = length - index;
+		
+	memmove(string + index, string + index + number, length - number - index + 1);
+}
+
+char* symbolicRealpath(const char* file) {
+	int length = strlen(file);
+
+	char* tmp = malloc(length + 1 + 1);
+	if (tmp == NULL) {
+		error("util: Couldn't allocate memory for realpath: %s", strerror(errno));
+		return NULL;
+	}
+
+	if (file[0] != '/') {
+		strcpy(tmp, "/");
+		strcat(tmp, file);
+	} else {	
+		strcpy(tmp, file);
+	}
+
+	char* result = tmp;
+
+	/*
+	 * remove /./ and /../
+	 * might introduce new //
+	 */
+
+	char last[3] = {0, 0, 0};	
+	for(int i = 0; i < length; i++) {
+		char c = tmp[i];
+
+		if (c == '/') {
+			if (last[0] == '.' && last[1] == '/') {
+				strremove(tmp, i - 1, 2);
+				length -= 2;
+				i -= 2;
+			} else if (last[0] == '.' && last[1] == '.' && last[2] == '/') {
+				tmp[i - 3] = '\0';
+				char* lastDir = rindex(tmp, '/');
+				if (lastDir == NULL) {
+					// tmp beginns with "/../"
+					// shift forward and reset last[]
+					// results in "..//"; the double / gets removed afterwards
+					tmp[0] = '.';
+					tmp[1] = '.';
+					tmp[2] = '/';
+					tmp += 3;
+					length -= 3 + 1;
+					i = 0;
+					last[0] = 0;
+					last[1] = 0;
+				} else {				
+					int lastDirLength = strlen(lastDir);
+					tmp[i - 3] = '/';
+					strremove(tmp, lastDir - tmp, lastDirLength + 3);
+					length -= lastDirLength + 3;
+					i -= lastDirLength + 3;					
+				}
+			}
+		}
+
+		last[2] = last[1];
+		last[1] = last[0];
+		last[0] = c;
+	}
+
+	/*
+	 * remove //
+	 */
+
+	tmp = result;
+	last[0] = 0;
+	length = strlen(tmp);
+
+	for(int i = 0; i < length; i++) {
+		char c = tmp[i];
+
+		if (c == '/') {
+			if (last[0] == '/') {
+				strremove(tmp, i, 1);
+				length -= 1;
+				i -= 1;
+			}
+		}
+
+		last[0] = c;
+	}
+
+	return result;
+}
+
+int isInDir(const char* file, const char* dir) {
 	int length = strlen(dir);
+
+	
+
+	
 
 	if (dir[length - 1] == '/')
 		length--;
 
 	if (strncmp(file, dir, length) == 0) {
 		if (file[length] == '\0')
-			return true;
+			return 1;
 		if (file[length] == '/')
-			return true;
+			return 1;
 	}
 
-	return false;
+	return 0;
 }
 
 int startCopyThread(int from, int to, bool closeWriteFd, pthread_t* thread) {

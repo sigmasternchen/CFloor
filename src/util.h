@@ -4,7 +4,11 @@
 #include <stdbool.h>
 #include <pthread.h>
 
-bool isInDir(const char* filename, const char* dirname);
+void strremove(char* string, int index, int number);
+
+char* symbolicRealpath(const char* file);
+
+int isInDir(const char* filename, const char* dirname);
 
 struct fileCopy {
 	int readFd;

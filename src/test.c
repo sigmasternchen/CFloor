@@ -14,6 +14,7 @@
 #include "logging.h"
 #include "signals.h"
 #include "headers.h"
+#include "util.h"
 
 bool global = true;
 bool overall = true;
@@ -44,6 +45,46 @@ void checkNull(void* value, const char* check) {
 
 void showError() {
 	fprintf(stderr, "Error: %s\n", strerror(errno));
+}
+
+void testUtil() {
+	const char* original = "Hello World";
+	char* clone = strclone(original);
+
+	checkNull(clone, "clone: null check");
+	checkString(clone, original, "clone: value check");
+
+	strremove(clone, 4, 1);
+	checkString(clone, "Hell World", "remove: middle");
+	strremove(clone, 4, 6);
+	checkString(clone, "Hell", "remove: end");
+	strremove(clone, 0, 2);
+	checkString(clone, "ll", "remove: start");
+	
+	free(clone);
+
+	char* tmp;
+	tmp = symbolicRealpath("/hello/world/");
+	checkString(tmp, "/hello/world/", "realpath: no mod");
+	free(tmp);
+	tmp = symbolicRealpath("//hello//world//");
+	checkString(tmp, "/hello/world/", "realpath: //");
+	free(tmp);
+	tmp = symbolicRealpath("hello/world/");
+	checkString(tmp, "/hello/world/", "realpath: no /");
+	free(tmp);
+	tmp = symbolicRealpath("/hello/././world/");
+	checkString(tmp, "/hello/world/", "realpath: ./");
+	free(tmp);
+	tmp = symbolicRealpath("/hello/../world/");
+	checkString(tmp, "/world/", "realpath: norm ..");
+	free(tmp);
+	tmp = symbolicRealpath("hello/../../world/");
+	checkString(tmp, "../world/", "realpath: over ..");
+	free(tmp);
+	tmp = symbolicRealpath("/hello/../../../world/");
+	checkString(tmp, "../../world/", "realpath: double over ..");
+	free(tmp);
 }
 
 void testLinkedList() {
@@ -193,20 +234,6 @@ void testHeaders() {
 	headers_free(&headers);
 }
 
-handler_t handlerGetter(struct metaData metaData, const char* host, struct bind* bind) {
-	return NULL;
-}
-
-void testNetworking() {
-	initNetworking((struct networkingConfig) {
-		.connectionTimeout = 30000,
-		.defaultResponse = {
-			.number = 0
-		},
-		.getHandler = &handlerGetter
-	});
-}
-
 void test(const char* name, void (*testFunction)()) {
 	printf("%s\n", name);
 	printf("%.*s\n", (int) strlen(name), 
@@ -219,6 +246,7 @@ void test(const char* name, void (*testFunction)()) {
 }
 
 int main(int argc, char** argv) {
+	test("util", &testUtil);
 	test("linked lists", &testLinkedList);
 	test("logging", &testLogging);
 	test("signals", &testTimers);

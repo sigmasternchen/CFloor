@@ -20,7 +20,20 @@ struct handler handlerGetter(struct metaData metaData, const char* host, struct 
 
 	union userData data;
 
-	if (strncmp(metaData.path, settings->cgiBin, strlen(settings->cgiBin)) == 0) {
+	bool isCgiBin = false;
+	int cgiBinLength = strlen(settings->cgiBin);
+
+	if (settings->cgiBin[cgiBinLength - 1] == '/')
+		cgiBinLength--;
+
+	if (strncmp(metaData.path, settings->cgiBin, cgiBinLength) == 0) {
+		if (metaData.path[cgiBinLength] == '\0')
+			isCgiBin = true;
+		if (metaData.path[cgiBinLength] == '/')
+			isCgiBin = true;
+	}
+
+	if (isCgiBin) {
 		data.ptr = &(settings->cgiSettings);
 
 		return (struct handler) {
@@ -38,7 +51,7 @@ struct handler handlerGetter(struct metaData metaData, const char* host, struct 
 }
 
 int main(int argc, char** argv) {
-	setLogging(stderr, INFO, true);
+	setLogging(stderr, DEBUG, true);
 	setCriticalHandler(NULL);
 
 	char* documentRoot = realpath("./home/", NULL);

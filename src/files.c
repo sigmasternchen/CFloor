@@ -12,6 +12,7 @@
 
 #include "files.h"
 #include "misc.h"
+#include "util.h"
 #include "logging.h"
 #include "status.h"
 #include "mime.h"

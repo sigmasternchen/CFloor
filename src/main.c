@@ -8,6 +8,7 @@
 #include "headers.h"
 #include "files.h"
 #include "cgi.h"
+#include "util.h"
 
 struct handlerSettings {
 	struct fileSettings fileSettings;
@@ -20,20 +21,7 @@ struct handler handlerGetter(struct metaData metaData, const char* host, struct 
 
 	union userData data;
 
-	bool isCgiBin = false;
-	int cgiBinLength = strlen(settings->cgiBin);
-
-	if (settings->cgiBin[cgiBinLength - 1] == '/')
-		cgiBinLength--;
-
-	if (strncmp(metaData.path, settings->cgiBin, cgiBinLength) == 0) {
-		if (metaData.path[cgiBinLength] == '\0')
-			isCgiBin = true;
-		if (metaData.path[cgiBinLength] == '/')
-			isCgiBin = true;
-	}
-
-	if (isCgiBin) {
+	if (isInDir(metaData.path, settings->cgiBin)) {
 		data.ptr = &(settings->cgiSettings);
 
 		return (struct handler) {

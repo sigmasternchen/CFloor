@@ -8,6 +8,7 @@
 
 #include "cgi.h"
 #include "misc.h"
+#include "util.h"
 #include "files.h"
 #include "status.h"
 #include "logging.h"

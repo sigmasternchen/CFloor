@@ -76,16 +76,4 @@ struct handler {
 	union userData data;
 };
 
-struct fileCopy {
-	int readFd;
-	int writeFd;
-	bool closeWriteFd;
-};
-int startCopyThread(int from, int to, bool closeWriteFd, pthread_t* thread);
-void* fileCopyThread(void* data);
-
-char* strclone(const char* string);
-
-int strlenOfNumber(long long number);
-
 #endif

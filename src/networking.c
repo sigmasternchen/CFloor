@@ -17,6 +17,7 @@
 #include "logging.h"
 #include "signals.h"
 #include "status.h"
+#include "util.h"
 
 struct networkingConfig networkingConfig;
 

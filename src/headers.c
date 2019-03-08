@@ -3,6 +3,7 @@
 
 #include "headers.h"
 #include "misc.h"
+#include "util.h"
 #include "logging.h"
 
 struct headers headers_create() {

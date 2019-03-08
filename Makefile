@@ -13,7 +13,6 @@ all: $(BIN_NAME)
 $(BIN_NAME): obj/main.o $(OBJS)
 	$(LD) $(LDFLAGS) -o $@ $^
 
-test: dependencies
 test: obj/test.o $(OBJS)
 	$(LD) $(LDFLAGS) -o $@ $^
 

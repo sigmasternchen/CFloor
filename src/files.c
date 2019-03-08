@@ -34,6 +34,13 @@ int scandirSort(const struct dirent** a, const struct dirent** b) {
 	return strcmp((*a)->d_name, (*b)->d_name); 
 }
 
+void freeDirent(struct dirent** list, int number) {
+	for(int i = 0; i < number; i++) {
+		free(list[i]);
+	}
+	free(list);
+}
+
 int showIndex(int fd, const char* path, const char* documentRoot) {
 	// TODO check for htmml entities
 
@@ -49,7 +56,7 @@ int showIndex(int fd, const char* path, const char* documentRoot) {
 
 	FILE* stream = fdopen(fd, "w");
 	if (stream == NULL) {
-		free(list);
+		freeDirent(list, number);
 		error("files: Couldn't get stream from fd: %s", strerror(errno));
 		return -1;
 	}
@@ -83,6 +90,8 @@ int showIndex(int fd, const char* path, const char* documentRoot) {
 
 	free(list);
 	fclose(stream);
+
+	freeDirent(list, number);
 
 	return 0;
 }

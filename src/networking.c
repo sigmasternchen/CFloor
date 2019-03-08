@@ -80,7 +80,7 @@ void cleanup() {
 		link = linked_next(link);
 	}
 
-	//debug("cleanup: %d/%d unlinked", unlinked, length);
+	debug("cleanup: %d/%d unlinked", unlinked, length);
 
 	link = linked_first(&connectionsToFree);
 
@@ -104,6 +104,15 @@ void cleanup() {
 
 			close(connection->fd);
 
+			if (connection->threads.request != 0) {
+				pthread_cancel(connection->threads.request);
+				pthread_join(connection->threads.request, NULL);
+			}
+			if (connection->threads.response != 0) {
+				pthread_cancel(connection->threads.response);
+				pthread_join(connection->threads.response, NULL);
+			}
+
 			if (connection->peer.name != NULL)
 				free(connection->peer.name);
 
@@ -115,7 +124,7 @@ void cleanup() {
 		link = linked_next(link);
 	}
 
-	//debug("cleanup: %d/%d freed", freed, length);
+	debug("cleanup: %d/%d freed", freed, length);
 }
 
 void setSIGIO(int fd, bool enable) {
@@ -123,7 +132,9 @@ void setSIGIO(int fd, bool enable) {
 
 	int flags = fcntl(fd, F_GETFL);
 	if (flags < 0) {
-		critical("networking: couldn't get socket flags");
+		warn("networking: couldn't get socket flags");
+		// ignore; maybe the socket is dead
+		return;
 	}
 
 	flags |= O_NONBLOCK;
@@ -133,7 +144,8 @@ void setSIGIO(int fd, bool enable) {
 		flags &= ~O_ASYNC;
 	}
 	if (fcntl(fd, F_SETFL, flags) < 0) {
-		critical("networking: couldn't set socket flags");
+		error("networking: couldn't set socket flags");
+		return;
 	}
 
 	// set signal owner
@@ -164,14 +176,20 @@ int dumpHeaderBuffer(char* buffer, size_t size, struct connection* connection) {
 	return 0;
 }
 
-static inline void stopThread(pthread_t self, pthread_t thread, bool force) {
-	if (pthread_equal(self, thread))
+static inline void stopThread(pthread_t self, pthread_t* thread, bool force) {
+	if (pthread_equal(self, *thread))
 		return;
 
-	if (force)
-		pthread_cancel(thread);
-	else
-		pthread_join(thread, NULL);
+	debug("networking: freeing thread");
+
+	if (force) {
+		if (pthread_cancel(*thread) < 0)
+			error("networking: cancel thread: %s", strerror(errno));
+	}
+	if (pthread_join(*thread, NULL) < 0) 
+		error("networking: join thread: %s", strerror(errno));
+
+	*thread = 0;
 }
 
 void safeEndConnection(struct connection* connection, bool force) {
@@ -179,10 +197,10 @@ void safeEndConnection(struct connection* connection, bool force) {
 
 	debug("networking: safely shuting down the connection. %d", force);
 
-	stopThread(self, connection->threads.request, true);
-	stopThread(self, connection->threads.response, force);
-	stopThread(self, connection->threads.helper[0], force);
-	stopThread(self, connection->threads.helper[1], force);
+	stopThread(self, &(connection->threads.request), true);
+	stopThread(self, &(connection->threads.response), force);
+	stopThread(self, &(connection->threads.helper[0]), force);
+	stopThread(self, &(connection->threads.helper[1]), force);
 	
 	close(connection->fd);
 
@@ -414,7 +432,10 @@ void dataHandler(int signo) {
 					}
 				} else {
 					tmp = headers_parse(&(connection->headers), connection->currentHeader, connection->currentHeaderLength);
-					if (tmp == HEADERS_END) {
+					if (tmp == HEADERS_END) {						
+						free(connection->currentHeader);
+						connection->currentHeader = NULL;
+
 						debug("networking: headers complete");
 						connection->state = PROCESSING;
 						updateTiming(connection, true);
@@ -476,6 +497,10 @@ void dataHandler(int signo) {
 		}
 
 		if (dropConnection) {
+			if (connection->currentHeader != NULL)
+				free(connection->currentHeader);
+			connection->currentHeader = NULL;
+		
 			debug("networking: dropping connection");
 			setSIGIO(connection->fd, false);
 			connection->state = ABORTED;

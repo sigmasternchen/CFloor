@@ -9,6 +9,7 @@ int signal_setup(int signo, void (*handler)(int signo)) {
 	struct sigaction action;
 	
 	action.sa_flags = 0;
+	sigemptyset(&(action.sa_mask));
 	action.sa_handler = handler;
 
 	return sigaction(signo, &action, NULL);
@@ -27,11 +28,13 @@ int signal_allow_all() {
 }
 int signal_block(int signo) {
 	sigset_t mask;
+	sigemptyset(&mask);
 	sigaddset(&mask, signo);
 	return pthread_sigmask(SIG_BLOCK, &mask, NULL);
 }
 int signal_allow(int signo) {
 	sigset_t mask;
+	sigemptyset(&mask);
 	sigaddset(&mask, signo);
 	return pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
 }

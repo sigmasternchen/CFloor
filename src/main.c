@@ -38,7 +38,7 @@ struct handler handlerGetter(struct metaData metaData, const char* host, struct 
 }
 
 int main(int argc, char** argv) {
-	setLogging(stderr, DEBUG, true);
+	setLogging(stderr, INFO, true);
 	setCriticalHandler(NULL);
 
 	char* documentRoot = realpath("./home/", NULL);

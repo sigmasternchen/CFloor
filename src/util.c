@@ -109,10 +109,6 @@ char* symbolicRealpath(const char* file) {
 int isInDir(const char* file, const char* dir) {
 	int length = strlen(dir);
 
-	
-
-	
-
 	if (dir[length - 1] == '/')
 		length--;
 

@@ -19,6 +19,8 @@ struct handlerSettings {
 struct handler handlerGetter(struct metaData metaData, const char* host, struct bind* bind) {
 	struct handlerSettings* settings = (struct handlerSettings*) bind->settings.ptr;
 
+	info("%s", metaData.path);
+
 	union userData data;
 
 	if (isInDir(metaData.path, settings->cgiBin)) {

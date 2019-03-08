@@ -232,11 +232,10 @@ int headers_metadata(struct metaData* metaData, char* header) {
 	else
 		return HEADERS_PARSE_ERROR;
 
-	char* path = malloc(strlen(_path) + 1);
+	char* path = symbolicRealpath(_path);
 	if (path == NULL) {
 		return HEADERS_ALLOC_ERROR;
 	}
-	strcpy(path, _path);
 	char* queryString = malloc(strlen(_queryString) + 1);
 	if (queryString == NULL) {
 		free(path);

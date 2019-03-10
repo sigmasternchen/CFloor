@@ -19,6 +19,10 @@
 #include "status.h"
 #include "util.h"
 
+#ifdef SSL_SUPPORT
+#include "ssl.h"
+#endif
+
 struct networkingConfig networkingConfig;
 
 static inline long timespecDiffMs(struct timespec start, struct timespec end) {
@@ -92,6 +96,12 @@ void cleanup() {
 		struct connection* connection = link->data;
 		if (connection->inUse == 0) {
 			freed++;
+
+			#ifdef SSL_SUPPORT
+			if (connection->sslConnection != NULL)
+				ssl_closeConnection(connection->sslConnection);
+			#endif
+
 			if (connection->metaData.path != NULL)
 				free(connection->metaData.path);
 			if (connection->metaData.queryString != NULL)
@@ -647,6 +657,7 @@ void* listenThread(void* _bind) {
 		}
 
 		if (inet_ntop(family, addrPtr, &(peer.addr[0]), INET6_ADDRSTRLEN + 1) == NULL) {
+			free(connection);
 			error("networking: Couldn't set peer addr string: %s", strerror(errno));
 			return NULL;
 		}
@@ -671,11 +682,28 @@ void* listenThread(void* _bind) {
 
 		snprintf(&(peer.portStr[0]), 5 + 1, "%d", peer.port);
 
+		#ifdef SSL_SUPPORT
+		if (bindObj->ssl_settings != NULL) {
+			struct ssl_connection* sslConnection = ssl_initConnection(bindObj->ssl_settings, tmp);
+			if (sslConnection == NULL) {
+				free(connection);
+				error("networking: failed to open ssl connection");
+				continue;
+			}
+	
+			connection->sslConnection = sslConnection;
+			connection->readfd = sslConnection->readfd;
+			connection->writefd = sslConnection->writefd;
+		} else {
+			connection->sslConnection = NULL;
+			connection->readfd = tmp;
+			connection->writefd = tmp;
+		}
+		#endif
+
 		connection->state = OPENED;
 		connection->peer = peer;
 		connection->bind = bindObj;
-		connection->readfd = tmp;
-		connection->writefd = tmp;
 		connection->metaData = (struct metaData) {
 			.path = NULL,
 			.queryString = NULL

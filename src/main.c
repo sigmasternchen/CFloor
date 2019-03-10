@@ -10,6 +10,10 @@
 #include "cgi.h"
 #include "util.h"
 
+#ifdef SSL_SUPPORT
+#include "ssl.h"
+#endif
+
 struct handlerSettings {
 	struct fileSettings fileSettings;
 	struct cgiSettings cgiSettings;
@@ -78,7 +82,11 @@ int main(int argc, char** argv) {
 				{
 					.address = "0.0.0.0",
 					.port = "1337",
-					.settings = settingsData
+					.settings = settingsData,
+
+					#ifdef SSL_SUPPORT
+					.ssl_settings = NULL
+					#endif
 				}
 			}
 		},

@@ -7,6 +7,10 @@
 
 #include <arpa/inet.h>
 
+#ifdef SSL_SUPPORT
+#include "ssl.h"
+#endif
+
 #define PTHREAD_NULL ((pthread_t) 0)
 
 enum method {
@@ -46,6 +50,11 @@ struct bind {
 	const char* port;
 	bool tls;
 	union userData settings;
+
+	#ifdef SSL_SUPPORT
+	struct ssl_settings* ssl_settings;
+	#endif
+
 	struct bind_private _private;
 };
 

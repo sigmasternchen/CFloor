@@ -12,6 +12,10 @@
 #include "headers.h"
 #include "misc.h"
 
+#ifdef SSL_SUPPORT
+#include "ssl.h"
+#endif
+
 #define NR_CONNECTION_STATE (5)
 enum connectionState {
 	OPENED = 0,
@@ -52,6 +56,9 @@ struct connection {
 	char* currentHeader;
 	struct timing timing;
 	struct threads threads;
+	#ifdef SSL_SUPPORT
+	struct ssl_connection* sslConnection;
+	#endif
 };
 
 struct binds {

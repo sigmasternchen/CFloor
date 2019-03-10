@@ -10,6 +10,11 @@ DEPS     = $(OBJS:%.o=%.d)
 
 all: $(BIN_NAME)
 
+ssl: CFLAGS += -DSSL_SUPPORT -Icrypto
+ssl: LDFLAGS += -lcrypto
+ssl: OBJS += obj/ssl.o
+ssl: $(BIN_NAME)
+
 $(BIN_NAME): obj/main.o $(OBJS)
 	$(LD) $(LDFLAGS) -o $@ $^
 

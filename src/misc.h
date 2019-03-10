@@ -7,6 +7,8 @@
 
 #include <arpa/inet.h>
 
+#define PTHREAD_NULL ((pthread_t) 0)
+
 enum method {
 	GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH 
 };

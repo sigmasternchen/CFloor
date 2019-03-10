@@ -106,13 +106,21 @@ void cleanup() {
 			close(connection->readfd);
 			close(connection->writefd);
 
-			if (connection->threads.request != 0) {
+			if (connection->threads.request != PTHREAD_NULL) {
 				pthread_cancel(connection->threads.request);
 				pthread_join(connection->threads.request, NULL);
 			}
-			if (connection->threads.response != 0) {
+			if (connection->threads.response != PTHREAD_NULL) {
 				pthread_cancel(connection->threads.response);
 				pthread_join(connection->threads.response, NULL);
+			}
+			if (connection->threads.helper[0] != PTHREAD_NULL) {
+				pthread_cancel(connection->threads.helper[0]);
+				pthread_join(connection->threads.helper[0], NULL);
+			}
+			if (connection->threads.helper[1] != PTHREAD_NULL) {
+				pthread_cancel(connection->threads.helper[1]);
+				pthread_join(connection->threads.helper[1], NULL);
 			}
 
 			if (connection->peer.name != NULL)
@@ -191,7 +199,7 @@ static inline void stopThread(pthread_t self, pthread_t* thread, bool force) {
 	if (pthread_join(*thread, NULL) < 0) 
 		error("networking: join thread: %s", strerror(errno));
 
-	*thread = 0;
+	*thread = PTHREAD_NULL;
 }
 
 void safeEndConnection(struct connection* connection, bool force) {
@@ -678,8 +686,8 @@ void* listenThread(void* _bind) {
 			 * This is really hacky. pthread_t is no(t always an) integer.
 			 * TODO: better solution
 			 */
-			.request = 0,
-			.response = 0,
+			.request = PTHREAD_NULL,
+			.response = PTHREAD_NULL,
 			.handler = {},
 			.requestFd = -1,
 			.responseFd = -1,
@@ -687,8 +695,8 @@ void* listenThread(void* _bind) {
 			._responseFd = -1
 		};
 		// TODO see above
-		connection->threads.helper[0] = 0;
-		connection->threads.helper[1] = 0;
+		connection->threads.helper[0] = PTHREAD_NULL;
+		connection->threads.helper[1] = PTHREAD_NULL;
 		connection->currentHeaderLength = 0;
 		connection->currentHeader = NULL;
 		connection->inUse = 0;

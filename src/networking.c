@@ -103,7 +103,8 @@ void cleanup() {
 
 			headers_free(&(connection->headers));
 
-			close(connection->fd);
+			close(connection->readfd);
+			close(connection->writefd);
 
 			if (connection->threads.request != 0) {
 				pthread_cancel(connection->threads.request);
@@ -202,8 +203,9 @@ void safeEndConnection(struct connection* connection, bool force) {
 	stopThread(self, &(connection->threads.response), force);
 	stopThread(self, &(connection->threads.helper[0]), force);
 	stopThread(self, &(connection->threads.helper[1]), force);
-	
-	close(connection->fd);
+
+	close(connection->readfd);
+	close(connection->writefd);
 
 	connection->inUse--;
 }
@@ -316,7 +318,7 @@ void* requestThread(void* data) {
 	connection->threads._responseFd = response;
 	connection->threads.responseFd = pipefd[1];
 
-	if (startCopyThread(connection->fd, request, true, &(connection->threads.helper[0])) < 0) {
+	if (startCopyThread(connection->readfd, request, true, &(connection->threads.helper[0])) < 0) {
 		close(request);
 		close(connection->threads.requestFd);
 		close(response);
@@ -328,7 +330,7 @@ void* requestThread(void* data) {
 		connection->inUse--;
 		return NULL;
 	}
-	if (startCopyThread(response, connection->fd, false, &(connection->threads.helper[1])) < 0) {
+	if (startCopyThread(response, connection->writefd, false, &(connection->threads.helper[1])) < 0) {
 		close(request);
 		close(connection->threads.requestFd);
 		close(response);
@@ -403,7 +405,7 @@ void dataHandler(int signo) {
 		char last = 0;
 		if (connection->currentHeaderLength > 0)
 			last = connection->currentHeader[connection->currentHeaderLength - 1];
-		while((tmp = read(connection->fd, &c, 1)) > 0) {
+		while((tmp = read(connection->readfd, &c, 1)) > 0) {
 			if (last == '\r' && c == '\n') {
 				if (dumpHeaderBuffer(&(buffer[0]), length, connection) < 0) {
 					dropConnection = true;
@@ -503,7 +505,7 @@ void dataHandler(int signo) {
 			connection->currentHeader = NULL;
 		
 			debug("networking: dropping connection");
-			setSIGIO(connection->fd, false);
+			setSIGIO(connection->readfd, false);
 			connection->state = ABORTED;
 		}
 	}
@@ -664,7 +666,8 @@ void* listenThread(void* _bind) {
 		connection->state = OPENED;
 		connection->peer = peer;
 		connection->bind = bindObj;
-		connection->fd = tmp;
+		connection->readfd = tmp;
+		connection->writefd = tmp;
 		connection->metaData = (struct metaData) {
 			.path = NULL,
 			.queryString = NULL

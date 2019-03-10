@@ -44,7 +44,8 @@ struct connection {
 	struct peer peer;
 	struct bind* bind;
 	volatile sig_atomic_t inUse;
-	int fd;
+	int readfd;
+	int writefd;
 	struct metaData metaData;
 	struct headers headers;
 	size_t currentHeaderLength;

@@ -73,7 +73,7 @@ void cleanup() {
 		if (connection->state != OPENED) {
 			unlink = true;
 		} else if (diffms > networkingConfig.connectionTimeout) {
-			unlink = true;
+			connection->state = ABORTED;
 		}
 
 		if (unlink) {	
@@ -415,6 +415,7 @@ void dataHandler(int signo) {
 		struct connection* connection = link->data;
 		if (connection->state != OPENED)
 			continue;
+		connection->inUse++;
 		int tmp;
 		char c;
 		char buffer[BUFFER_LENGTH];
@@ -424,6 +425,7 @@ void dataHandler(int signo) {
 		if (connection->currentHeaderLength > 0)
 			last = connection->currentHeader[connection->currentHeaderLength - 1];
 		while((tmp = read(connection->readfd, &c, 1)) > 0) {
+			printf("%c", c);
 			if (last == '\r' && c == '\n') {
 				if (dumpHeaderBuffer(&(buffer[0]), length, connection) < 0) {
 					dropConnection = true;
@@ -526,6 +528,8 @@ void dataHandler(int signo) {
 			setSIGIO(connection->readfd, false);
 			connection->state = ABORTED;
 		}
+
+		connection->inUse--;
 	}
 }
 void* dataThread(void* ignore) {
@@ -682,11 +686,17 @@ void* listenThread(void* _bind) {
 
 		snprintf(&(peer.portStr[0]), 5 + 1, "%d", peer.port);
 
+		info("networking: new connection from %s:%s", peer.addr, peer.portStr);
+
+		connection->readfd = tmp;
+		connection->writefd = tmp;
+
 		#ifdef SSL_SUPPORT
 		if (bindObj->ssl_settings != NULL) {
 			struct ssl_connection* sslConnection = ssl_initConnection(bindObj->ssl_settings, tmp);
 			if (sslConnection == NULL) {
 				free(connection);
+				close(tmp);
 				error("networking: failed to open ssl connection");
 				continue;
 			}
@@ -696,8 +706,6 @@ void* listenThread(void* _bind) {
 			connection->writefd = sslConnection->writefd;
 		} else {
 			connection->sslConnection = NULL;
-			connection->readfd = tmp;
-			connection->writefd = tmp;
 		}
 		#endif
 

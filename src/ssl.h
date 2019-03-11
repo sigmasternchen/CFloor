@@ -27,6 +27,6 @@ void ssl_destroy();
 
 int ssl_initSettings(struct ssl_settings* settings);
 struct ssl_connection* ssl_initConnection(struct ssl_settings* settings, int socket);
-int ssl_closeConnection(struct ssl_connection* connection);
+void ssl_closeConnection(struct ssl_connection* connection);
 
 #endif

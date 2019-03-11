@@ -9,10 +9,34 @@
 #include "files.h"
 #include "cgi.h"
 #include "util.h"
+#include "signals.h"
 
 #ifdef SSL_SUPPORT
 #include "ssl.h"
 #endif
+
+struct headers headers;
+char* documentRoot = NULL;
+
+void shutdownHandler() {
+	info("main: shutting down");
+
+	headers_free(&headers);
+
+	if (documentRoot != NULL)
+		free(documentRoot);
+
+	#ifdef SSL_SUPPORT
+	ssl_destroy();
+	#endif
+
+	exit(0);
+}
+
+void sigHandler(int signo) {
+	info("main: signal %d", signo);
+	shutdownHandler();
+}
 
 struct handlerSettings {
 	struct fileSettings fileSettings;
@@ -48,7 +72,10 @@ int main(int argc, char** argv) {
 	setLogging(stderr, DEBUG, true);
 	setCriticalHandler(NULL);
 
-	char* documentRoot = realpath("./home/", NULL);
+	signal_setup(SIGINT, &sigHandler);
+	signal_setup(SIGTERM, &sigHandler);
+
+	documentRoot = realpath("./home/", NULL);
 
 	struct handlerSettings handlerSettings = {
 		.fileSettings =  {
@@ -70,12 +97,27 @@ int main(int argc, char** argv) {
 	union userData settingsData;
 	settingsData.ptr = &handlerSettings;
 
-	struct headers headers = headers_create();
+	headers = headers_create();
 	headers_mod(&headers, "Server", "CFloor 0.1");
+
+	#ifdef SSL_SUPPORT
+	ssl_init();
+
+	struct ssl_settings ssl_settings = (struct ssl_settings) {
+		.privateKey = "certs/hiro.key",
+		.certificate = "certs/hiro.crt"
+	};
+	
+	if (ssl_initSettings(&(ssl_settings)) < 0) {
+		error("main: error setting up ssl settings");
+		return 1;
+	}
+	#endif
+
 
 	struct networkingConfig config = {
 		.maxConnections = 1024,
-		.connectionTimeout = 30000,
+		.connectionTimeout = 2000,
 		.binds = {
 			.number = 1,
 			.binds = (struct bind[]) {
@@ -85,7 +127,7 @@ int main(int argc, char** argv) {
 					.settings = settingsData,
 
 					#ifdef SSL_SUPPORT
-					.ssl_settings = NULL
+					.ssl_settings = &ssl_settings
 					#endif
 				}
 			}
@@ -100,6 +142,5 @@ int main(int argc, char** argv) {
 		sleep(0xffff);
 	}
 
-	headers_free(&headers);
-	free(documentRoot);
+	shutdownHandler();
 }

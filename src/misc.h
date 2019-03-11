@@ -11,6 +11,10 @@
 #include "ssl.h"
 #endif
 
+#include "logging.h"
+#define HTTP_ACCESS (CUSTOM_LOGLEVEL_OFFSET + 0)
+#define HTTP_ERROR  (CUSTOM_LOGLEVEL_OFFSET + 1)
+
 #define PTHREAD_NULL ((pthread_t) 0)
 
 enum method {

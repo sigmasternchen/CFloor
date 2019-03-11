@@ -246,6 +246,8 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 		return -1;
 	}
 
+	logging(HTTP_ACCESS, "%s %s %d %s", methodString(connection->metaData), connection->metaData.uri, statusCode, headers_get(request->headers, "User-Agent"));
+
 	struct statusStrings strings = getStatusStrings(statusCode);
 
 	fprintf(stream, "%s %d %s\r\n", protocolString(connection->metaData), statusCode, strings.statusString);

@@ -5,9 +5,16 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-enum loglevel {
-	DEBUG, VERBOSE, INFO, WARN, ERROR, CRITICAL
-};
+typedef int loglevel_t;
+
+#define DEBUG (0)
+#define VERBOSE (1)
+#define INFO (2)
+#define WARN (3)
+#define ERROR (4)
+#define CRITICAL (5)
+
+#define CUSTOM_LOGLEVEL_OFFSET (128)
 
 #define EXIT_DEVASTATING (255)
 
@@ -15,12 +22,12 @@ enum loglevel {
 
 #define MAX_LOGGER (10)
 
-void setLogging(FILE* file, enum loglevel loglevel, bool color);
+void setLogging(FILE* file, loglevel_t loglevel, bool color);
 void setCriticalHandler(void (*handler)());
 
 void printBacktrace();
 
-void logging(enum loglevel loglevel, const char* format, ...);
+void logging(loglevel_t loglevel, const char* format, ...);
 void debug(const char* format, ...);
 void verbose(const char* format, ...);
 void info(const char* format, ...);

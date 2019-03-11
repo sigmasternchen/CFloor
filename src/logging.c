@@ -17,7 +17,7 @@
 
 struct {
 	FILE* file;
-	enum loglevel loglevel;
+	loglevel_t loglevel;
 	bool color;
 	sem_t write_sem;
 } logger[MAX_LOGGER];
@@ -25,7 +25,7 @@ int loggerCount = 0;
 
 void (*_criticalHandler)() = NULL;
 
-void setLogging(FILE* file, enum loglevel loglevel, bool color) {
+void setLogging(FILE* file, loglevel_t loglevel, bool color) {
 	if (loggerCount == MAX_LOGGER - 1) {
 		return;
 	}
@@ -133,7 +133,7 @@ char* getTimestamp() {
 	return result;
 }
 
-char* getLoglevelString(enum loglevel loglevel, bool color) {
+char* getLoglevelString(loglevel_t loglevel, bool color) {
 	#define DEBUG_STRING    "[DEBUG]"
 	#define VERBOSE_STRING  "[VERBOSE]"
 	#define INFO_STRING     "[INFO]"
@@ -141,6 +141,7 @@ char* getLoglevelString(enum loglevel loglevel, bool color) {
 	#define ERROR_STRING    "[ERROR]"
 	#define CRITICAL_STRING "[CRITICAL]"
 	#define UNKNOWN_STRING  "[UNKNOWN]"
+	#define CUSTOM_STRING   ""
 
 	#define DEBUG_COLOR     "\033[37m"
 	#define VERBOSE_COLOR   "\033[35m"
@@ -148,7 +149,8 @@ char* getLoglevelString(enum loglevel loglevel, bool color) {
 	#define WARN_COLOR      "\033[33m"
 	#define ERROR_COLOR     "\033[31m"
 	#define CRITICAL_COLOR  "\033[41m\033[30m"
-	#define UNKNOWN_COLOR    "\033[41m\033[30m"
+	#define UNKNOWN_COLOR   "\033[41m\033[30m"
+	#define CUSTOM_COLOR    "\033[37m"
 
 	#define COLOR_END       "\033[0m"
 
@@ -190,10 +192,18 @@ char* getLoglevelString(enum loglevel loglevel, bool color) {
 				return CRITICAL_STRING;
 			break;
 		default:
-			if (color)
-				return UNKNOWN_COLOR UNKNOWN_STRING COLOR_END;
-			else
-				return UNKNOWN_STRING;
+			
+			if (loglevel >= CUSTOM_LOGLEVEL_OFFSET) {
+				if (color)
+					return CUSTOM_COLOR CUSTOM_STRING COLOR_END;
+				else
+					return CUSTOM_STRING;
+			} else {
+				if (color)
+					return UNKNOWN_COLOR UNKNOWN_STRING COLOR_END;
+				else
+					return UNKNOWN_STRING;
+			}
 			break;
 	}
 
@@ -201,12 +211,18 @@ char* getLoglevelString(enum loglevel loglevel, bool color) {
 	return NULL;
 }
 
-void vlogging(enum loglevel loglevel, const char* format, va_list argptr) {
+void vlogging(loglevel_t loglevel, const char* format, va_list argptr) {
 	char* timestamp = getTimestamp();
 
 	for(int i = 0; i < loggerCount; i++) {
 		if (loglevel < logger[i].loglevel)
 			continue;
+		if (logger[i].loglevel >= CUSTOM_LOGLEVEL_OFFSET) {
+			if (loglevel != logger[i].loglevel)
+				continue;
+		} else if (loglevel >= CUSTOM_LOGLEVEL_OFFSET)
+			continue;
+		
 
 		sem_wait(&(logger[i].write_sem));
 
@@ -226,7 +242,7 @@ void vlogging(enum loglevel loglevel, const char* format, va_list argptr) {
 		callCritical();
 }
 
-void logging(enum loglevel loglevel, const char* format, ...) {
+void logging(loglevel_t loglevel, const char* format, ...) {
 	va_list argptr;
 	va_start(argptr, format);
 	vlogging(loglevel, format, argptr);

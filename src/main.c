@@ -17,6 +17,7 @@
 
 struct headers headers;
 char* documentRoot = NULL;
+FILE* accesslog;
 
 void shutdownHandler() {
 	info("main: shutting down");
@@ -29,6 +30,8 @@ void shutdownHandler() {
 	#ifdef SSL_SUPPORT
 	ssl_destroy();
 	#endif
+
+	fclose(accesslog);
 
 	exit(0);
 }
@@ -69,7 +72,11 @@ struct handler handlerGetter(struct metaData metaData, const char* host, struct 
 }
 
 int main(int argc, char** argv) {
+	accesslog = fopen("access.log", "a");
+	setbuf(accesslog, NULL);
+
 	setLogging(stderr, DEBUG, true);
+	setLogging(accesslog, HTTP_ACCESS, false);
 	setCriticalHandler(NULL);
 
 	signal_setup(SIGINT, &sigHandler);

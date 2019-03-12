@@ -46,10 +46,8 @@ struct config* config_parse(FILE* file) {
 	#define BIND (0)
 	#define BIND_VALUE (1)
 	#define BIND_BRACKETS_OPEN (2)
-	#define BIND_BRACKETS_CLOSE (3)
 	#define BIND_CONTENT (4)
 	#define SITE_BRACKETS_OPEN (5)
-	#define SITE_BRACKETS_CLOSE (6)
 	#define SITE_CONTENT (7)
 	#define SITE_HOST_EQUALS (8)
 	#define SITE_HOST_VALUE (9)
@@ -57,7 +55,6 @@ struct config* config_parse(FILE* file) {
 	#define SITE_ROOT_VALUE (11)
 	#define HANDLER_VALUE (12)
 	#define HANDLER_BRACKETS_OPEN (13)
-	#define HANDLER_BRACKETS_CLOSE (14)
 	#define HANDLER_CONTENT (15)
 	#define TYPE_EQUALS (16)
 	#define TYPE_VALUE (17)
@@ -71,7 +68,7 @@ struct config* config_parse(FILE* file) {
 
 	char currentToken[MAX_TOKEN_LENGTH];
 	int currentTokenLength = 0;
-	int line = 0;
+	int line = 1;
 
 	int c;
 	while((c = fgetc(file)) != EOF) {
@@ -84,7 +81,7 @@ struct config* config_parse(FILE* file) {
 			if (currentTokenLength == 0)
 				continue;
 						
-			currentToken[currentTokenLength++] = '\0';
+			currentToken[currentTokenLength] = '\0';
 
 			switch(state) {
 				case BIND:
@@ -168,16 +165,6 @@ struct config* config_parse(FILE* file) {
 					state = BIND_CONTENT;
 
 					break;
-				case BIND_BRACKETS_CLOSE:
-					if (strcmp(currentToken, "}") != 0) {
-						error("config: Unexpected token '%s' on line %d. '}' expected", currentToken, currentLine);
-						freeEverything(toFree, toFreeLength);
-						return NULL;
-					}
-
-					state = BIND;
-
-					break;
 				case BIND_CONTENT:
 					if (strcmp(currentToken, "site") == 0) {
 						currentSite = malloc(sizeof(struct config_site));
@@ -207,6 +194,8 @@ struct config* config_parse(FILE* file) {
 						currentSite->documentRoot = NULL;
 
 						state = SITE_BRACKETS_OPEN;
+					} else if (strcmp(currentToken, "}") == 0) {
+						state = BIND;
 					} else {
 						error("config: Unknown property '%s' on line %d.", currentToken, currentLine);
 						freeEverything(toFree, toFreeLength);
@@ -221,15 +210,6 @@ struct config* config_parse(FILE* file) {
 					}
 
 					state = SITE_CONTENT;
-					break;
-				case SITE_BRACKETS_CLOSE:
-					if (strcmp(currentToken, "}") != 0) {
-						error("config: Unexpected token '%s' on line %d. '}' expected", currentToken, currentLine);
-						freeEverything(toFree, toFreeLength);
-						return NULL;
-					}
-
-					state = BIND_CONTENT;
 					break;
 				case SITE_CONTENT:
 					if (strcmp(currentToken, "handler") == 0) {
@@ -259,11 +239,13 @@ struct config* config_parse(FILE* file) {
 
 						memset(&(currentHandler->settings), 0, sizeof(union config_handler_settings));
 
-						state = SITE_BRACKETS_OPEN;
-					} else if (strcmp(currentToken, "host") == 0 || strcmp(currentToken, "alias") == 0) {
+						state = HANDLER_VALUE;
+					} else if (strcmp(currentToken, "hostname") == 0 || strcmp(currentToken, "alias") == 0) {
 						state = SITE_HOST_EQUALS;
 					} else if (strcmp(currentToken, "root") == 0) {
 						state = SITE_ROOT_EQUALS;
+					} else if (strcmp(currentToken, "}") == 0) {
+						state = BIND_CONTENT;
 					} else {
 						error("config: Unknown property '%s' on line %d.", currentToken, currentLine);
 						freeEverything(toFree, toFreeLength);
@@ -340,21 +322,14 @@ struct config* config_parse(FILE* file) {
 
 					state = HANDLER_CONTENT;
 					break;
-				case HANDLER_BRACKETS_CLOSE:
-					if (strcmp(currentToken, "{") != 0) {
-						error("config: Unexpected token '%s' on line %d. '{' expected", currentToken, currentLine);
-						freeEverything(toFree, toFreeLength);
-						return NULL;
-					}
-
-					state = SITE_CONTENT;
-					break;
 				case HANDLER_CONTENT:
 					if (strcmp(currentToken, "type") == 0) {
 						state = TYPE_EQUALS;
 					} else if (strcmp(currentToken, "index") == 0) {
 						state = INDEX_EQUALS;
-					}  else {
+					} else if (strcmp(currentToken, "}") == 0) {
+						state = SITE_CONTENT;
+					} else {
 						error("config: Unknown property '%s' on line %d.", currentToken, currentLine);
 						freeEverything(toFree, toFreeLength);
 						return NULL;
@@ -391,7 +366,7 @@ struct config* config_parse(FILE* file) {
 					break;
 				case INDEX_VALUE:
 					if (currentHandler->type != FILE_HANDLER_NO) {
-						error("config: unexpected 'index'; this is not a file handler");
+						error("config: unexpected 'index' on line %d; this is not a file handler", currentLine);
 						freeEverything(toFree, toFreeLength);
 						return NULL;
 					}
@@ -457,10 +432,12 @@ struct config* config_parse(FILE* file) {
 				switch(currentHandler->type) {
 					case FILE_HANDLER_NO: ;
 						struct fileSettings* fileSettings = &(currentHandler->settings.fileSettings);
+						currentHandler->handler = &fileHandler;
 						fileSettings->documentRoot = documentRoot;
 						break;
 					case CGI_HANDLER_NO: ;
 						struct cgiSettings* cgiSettings = &(currentHandler->settings.cgiSettings);
+						currentHandler->handler = &cgiHandler;
 						cgiSettings->documentRoot = documentRoot;
 						break;
 					default:
@@ -488,5 +465,69 @@ struct handler config_getHandler(struct config* config, struct metaData metaData
 }
 
 void config_destroy(struct config* config) {
+	if (config == NULL)
+		return;
 
+	struct config_bind* currentBind = NULL;
+	struct config_site* currentSite = NULL;
+	struct config_handler* currentHandler = NULL;
+
+	for (int i = 0; i < config->nrBinds; i++) {
+		currentBind = config->binds[i];
+
+		free(currentBind->addr);
+		free(currentBind->port);
+
+		for(int j = 0; j < currentBind->nrSites; j++) {
+			currentSite = currentBind->sites[j];
+
+			if (currentSite->documentRoot != NULL)
+				free(currentSite->documentRoot);
+
+			for (int k = 0; k < currentSite->nrHostnames; k++) {
+				if (currentSite->hostnames[k] != NULL)
+					free(currentSite->hostnames[k]);
+			}
+			if (currentSite->hostnames != NULL)
+				free(currentSite->hostnames);
+
+			for (int k = 0; k < currentSite->nrHandlers; k++) {
+				currentHandler = currentSite->handlers[k];
+
+				if (currentHandler->dir != NULL)
+					free(currentHandler->dir);
+
+				switch(currentHandler->type) {
+					case FILE_HANDLER_NO: ;
+						struct fileSettings fileSettings = currentHandler->settings.fileSettings;
+
+						for (int l = 0; l < fileSettings.indexfiles.number; l++) {
+							free(fileSettings.indexfiles.files[l]);
+						}
+
+						if (fileSettings.indexfiles.files != NULL)
+							free(fileSettings.indexfiles.files);
+
+						break;
+					case CGI_HANDLER_NO: ;
+						//struct cgiSettings cgiSettings = currentHandler->settings.cgiSettings;
+	
+						break;
+					default:
+						break;
+				}
+
+				free(currentHandler);
+			}
+			if (currentSite->handlers != NULL)
+				free(currentSite->handlers);
+			free(currentSite);
+		}
+		if (currentBind->sites != NULL)
+			free(currentBind->sites);
+		free(currentBind);
+	}
+	if (config->binds != NULL)
+		free(config->binds);
+	free(config);
 }

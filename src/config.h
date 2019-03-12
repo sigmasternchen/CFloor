@@ -11,16 +11,16 @@
 struct config {
 	int nrBinds;
 	struct config_bind {
-		const char* addr;
-		const char* port;
+		char* addr;
+		char* port;
 		int nrSites;
 		struct config_site {
 			int nrHostnames;
 			char** hostnames;
-			const char* documentRoot;
+			char* documentRoot;
 			int nrHandlers;
 			struct config_handler {
-				const char* dir;
+				char* dir;
 				int type;
 				handler_t handler;
 				union config_handler_settings {

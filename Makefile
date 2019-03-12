@@ -5,7 +5,7 @@ LDFLAGS  = -lpthread -lrt
 
 BIN_NAME = cfloor
 
-OBJS     = obj/networking.o obj/linked.o obj/logging.o obj/signals.o obj/headers.o obj/misc.o obj/status.o obj/files.o obj/mime.o obj/cgi.o obj/util.o obj/ssl.o
+OBJS     = obj/networking.o obj/linked.o obj/logging.o obj/signals.o obj/headers.o obj/misc.o obj/status.o obj/files.o obj/mime.o obj/cgi.o obj/util.o obj/ssl.o obj/config.o
 DEPS     = $(OBJS:%.o=%.d)
 
 all: $(BIN_NAME)

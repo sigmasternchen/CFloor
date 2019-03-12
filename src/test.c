@@ -15,6 +15,9 @@
 #include "signals.h"
 #include "headers.h"
 #include "util.h"
+#include "config.h"
+#include "files.h"
+#include "cgi.h"
 
 bool global = true;
 bool overall = true;
@@ -234,6 +237,29 @@ void testHeaders() {
 	headers_free(&headers);
 }
 
+void testConfig() {
+	struct config* config = config_parse(fopen("test.conf", "r"));
+
+	checkNull(config, "null check");
+	checkInt(config->nrBinds, 1, "bind no check");
+	checkString(config->binds[0]->addr, "0.0.0.0", "bind addr check");
+	checkString(config->binds[0]->port, "80", "bind port check");
+	checkInt(config->binds[0]->nrSites, 1, "site no check");
+	checkInt(config->binds[0]->sites[0]->nrHostnames, 1, "site hostname no check");
+	checkString(config->binds[0]->sites[0]->hostnames[0], "example.com", "site hostname check");
+	checkString(config->binds[0]->sites[0]->documentRoot, "/var/www", "site document root check");
+	checkInt(config->binds[0]->sites[0]->nrHandlers, 1, "handler no check");
+	checkString(config->binds[0]->sites[0]->handlers[0]->dir, "/", "handler dir check");
+	checkInt(config->binds[0]->sites[0]->handlers[0]->type, FILE_HANDLER_NO, "handler type no check");
+	checkVoid(config->binds[0]->sites[0]->handlers[0]->handler, &fileHandler, "handler ptr check");
+	checkString(config->binds[0]->sites[0]->handlers[0]->settings.fileSettings.documentRoot, "/var/www", "handler settings root check");
+	checkInt(config->binds[0]->sites[0]->handlers[0]->settings.fileSettings.indexfiles.number, 1, "handler settings index no");
+	checkString(config->binds[0]->sites[0]->handlers[0]->settings.fileSettings.indexfiles.files[0], "index.html", "handler settings index check");
+
+	
+	config_destroy(config);
+}
+
 void test(const char* name, void (*testFunction)()) {
 	printf("%s\n", name);
 	printf("%.*s\n", (int) strlen(name), 
@@ -246,11 +272,15 @@ void test(const char* name, void (*testFunction)()) {
 }
 
 int main(int argc, char** argv) {
+	/**test("logging", &testLogging);
 	test("util", &testUtil);
 	test("linked lists", &testLinkedList);
-	test("logging", &testLogging);
 	test("signals", &testTimers);
-	test("headers", &testHeaders);
+	test("headers", &testHeaders);*/
+	
+	setLogging(stderr, DEFAULT_LOGLEVEL, true);
+
+	test("config", &testConfig);
 
 
 	printf("\nOverall: %s\n", overall ? "OK" : "FAILED");

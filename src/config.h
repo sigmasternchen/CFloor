@@ -3,7 +3,10 @@
 
 #include <stdio.h>
 
+#include "networking.h"
 #include "misc.h"
+#include "files.h"
+#include "cgi.h"
 
 struct config {
 	int nrBinds;
@@ -13,19 +16,20 @@ struct config {
 		int nrSites;
 		struct config_site {
 			int nrHostnames;
-			const char** hostnames;
+			char** hostnames;
 			const char* documentRoot;
 			int nrHandlers;
 			struct config_handler {
 				const char* dir;
+				int type;
 				handler_t handler;
 				union config_handler_settings {
 					struct fileSettings fileSettings;
 					struct cgiSettings cgiSettings;
 				} settings;
-			} handlers*;
-		} sites*;
-	} binds*;
+			} **handlers;
+		} **sites;
+	} **binds;
 };
 
 /*
@@ -33,7 +37,7 @@ config format
 
 bind [addr]:[port] {
 	site {
-		host|alias = "[host]"
+		hostname|alias = "[host]"
 		root = "/"
 		handler "/" {
 			type = cgi|file

@@ -6,12 +6,14 @@
 #include "files.h"
 #include "misc.h"
 
+#define FILE_HANDLER_NO (0)
+
 struct fileSettings {
 	const char* documentRoot;
 	bool index;
 	struct {
 		int number;
-		const char** files;
+		char** files;
 	} indexfiles;
 };
 

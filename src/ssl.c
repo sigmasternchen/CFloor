@@ -48,12 +48,30 @@ void* copyFromSslToFd(void* data) {
 
 	char b;
 	int r;
-	while((r = SSL_read(connection->instance, &b, 1)) == 1) {
-		write(connection->_readfd, &b, 1);
+
+	while(true) {
+		while((r = SSL_read(connection->instance, &b, 1)) == 1) {
+			write(connection->_readfd, &b, 1);
+		}
+
+		int error = SSL_get_error(connection->instance, r);
+
+		debug("ssl: ssl error: %d", error);
+
+		if (error == SSL_ERROR_ZERO_RETURN) {
+			debug("ssl: no more data can be read");
+			break;
+		} else if (error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE) {
+			debug("ssl: trying again");
+			continue;
+		} else {
+			warn("ssl: connection had an error");
+			break;
+		}
 	}
 
 	debug("ssl: read thread finished %d", r);
-	debug("ssl: ssl error: %s", ERR_error_string(ERR_get_error(), NULL));
+	close(connection->_readfd);
 
 	return NULL;
 }

@@ -223,17 +223,20 @@ void vlogging(loglevel_t loglevel, const char* format, va_list argptr) {
 		} else if (loglevel >= CUSTOM_LOGLEVEL_OFFSET)
 			continue;
 		
+		char* loglevelString = getLoglevelString(loglevel, logger[i].color);
+
+		va_list local;
+		va_copy(local, argptr);
 
 		sem_wait(&(logger[i].write_sem));
 
-		char* loglevelString = getLoglevelString(loglevel, logger[i].color);
 		fprintf(logger[i].file, "%s %s ", timestamp, loglevelString);
-
 		vfprintf(logger[i].file, format, argptr);
-
 		fprintf(logger[i].file, "\n");
 
 		sem_post(&(logger[i].write_sem));
+
+		va_end(local);
 	}
 	
 	free(timestamp);

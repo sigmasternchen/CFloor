@@ -7,6 +7,7 @@
 
 typedef int loglevel_t;
 
+#define UNKNOWN (-1)
 #define DEBUG (0)
 #define VERBOSE (1)
 #define INFO (2)
@@ -34,5 +35,7 @@ void info(const char* format, ...);
 void warn(const char* format, ...);
 void error(const char* format, ...);
 void critical(const char* format, ...);
+
+loglevel_t strtologlevel(const char* string);
 
 #endif

@@ -269,6 +269,10 @@ void testConfig() {
 	checkString(config->binds[0]->sites[0]->handlers[0]->settings.fileSettings.documentRoot, "/var/www", "handler settings root check");
 	checkInt(config->binds[0]->sites[0]->handlers[0]->settings.fileSettings.indexfiles.number, 1, "handler settings index no");
 	checkString(config->binds[0]->sites[0]->handlers[0]->settings.fileSettings.indexfiles.files[0], "index.html", "handler settings index check");
+	checkString(config->logging.accessLogfile, "access.log", "access log file check");
+	checkString(config->logging.serverLogfile, "server.log", "server log file check");
+	printf("%s\n", config->logging.serverLogfile);
+	checkInt(config->logging.serverVerbosity, INFO, "server log verbosity check");
 
 	#ifdef SSL_SUPPORT
 		checkString(config->binds[1]->addr, "0.0.0.0", "bind addr check");
@@ -306,15 +310,12 @@ void test(const char* name, void (*testFunction)()) {
 }
 
 int main(int argc, char** argv) {
-	/**test("logging", &testLogging);
+	test("config", &testConfig);
 	test("util", &testUtil);
 	test("linked lists", &testLinkedList);
 	test("signals", &testTimers);
-	test("headers", &testHeaders);*/
-	
-	setLogging(stderr, DEFAULT_LOGLEVEL, true);
-
-	test("config", &testConfig);
+	test("headers", &testHeaders);
+	test("logging", &testLogging);
 
 
 	printf("\nOverall: %s\n", overall ? "OK" : "FAILED");

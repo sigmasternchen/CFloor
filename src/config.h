@@ -7,10 +7,13 @@
 #include "misc.h"
 #include "files.h"
 #include "cgi.h"
+#include "logging.h"
 
 #ifdef SSL_SUPPORT
 	#include "ssl.h"
 #endif
+
+#define CONFIG_DEFAULT_LOGLEVEL (DEFAULT_LOGLEVEL)
 
 struct config {
 	int nrBinds;
@@ -39,6 +42,11 @@ struct config {
 			} **handlers;
 		} **sites;
 	} **binds;
+	struct config_logging {
+		char* accessLogfile;
+		char* serverLogfile;
+		loglevel_t serverVerbosity;
+	} logging;
 };
 
 /*
@@ -59,6 +67,11 @@ bind [addr]:[port] {
 		}
 	}
 }
+logging {
+	access = file
+	server = file
+	verboseity = debug|info|warn|error
+}
 
 
 */
@@ -66,6 +79,7 @@ bind [addr]:[port] {
 struct config* config_parse(FILE* file);
 
 struct networkingConfig config_getNetworkingConfig(struct config* config);
+void config_setLogging(struct config* config);
 struct handler config_getHandler(struct config* config, struct metaData metaData, const char* host, struct bind* bind);
 
 void config_destroy(struct config* config);

@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "config.h"
 #include "logging.h"
@@ -33,6 +34,9 @@ void replaceOrAdd(void** array, int* length, void* old, void* new) {
 }
 
 struct config* config_parse(FILE* file) {
+	// logger is not yet set but we need error messages
+	setLogging(stdout, ERROR, true);
+
 	void* toFree[LENGTH_OF_TOFREE_ARRAY];
 	int toFreeLength = 0;
 
@@ -45,9 +49,12 @@ struct config* config_parse(FILE* file) {
 	replaceOrAdd(toFree, &toFreeLength, NULL, config);
 	config->nrBinds = 0;
 	config->binds = NULL;
+	config->logging.accessLogfile = NULL;
+	config->logging.serverLogfile = NULL;
+	config->logging.serverVerbosity = CONFIG_DEFAULT_LOGLEVEL;
 
 
-	#define BIND (0)
+	#define ROOT (0)
 	#define BIND_VALUE (10)
 	#define BIND_BRACKETS_OPEN (11)
 	#define BIND_CONTENT (12)
@@ -70,7 +77,15 @@ struct config* config_parse(FILE* file) {
 	#define TYPE_VALUE (1464)
 	#define INDEX_EQUALS (1465)
 	#define INDEX_VALUE (1466)
-	int state = BIND;
+	#define LOGGING_BRACKETS_OPEN (20)
+	#define LOGGING_CONTENT (21)
+	#define LOGGING_ACCESS_FILE_EQUALS (22)
+	#define LOGGING_ACCESS_FILE_VALUE (23)
+	#define LOGGING_SERVER_FILE_EQUALS (24)
+	#define LOGGING_SERVER_FILE_VALUE (25)
+	#define LOGGING_SERVER_VERBOSITY_EQUALS (26)
+	#define LOGGING_SERVER_VERBOSITY_VALUE (27)
+	int state = ROOT;
 
 	struct config_bind* currentBind = NULL;
 	struct config_site* currentSite = NULL;
@@ -97,43 +112,45 @@ struct config* config_parse(FILE* file) {
 			char** tmpArray;
 
 			switch(state) {
-				case BIND:
-					if (strcmp(currentToken, "bind") != 0) {
-						error("config: Unexpected token '%s' on line %d. 'bind' expected", currentToken, currentLine);
+				case ROOT:
+					if (strcmp(currentToken, "bind") == 0) {
+						currentBind = malloc(sizeof(struct config_bind));
+						if (currentBind == NULL) {
+							error("config: couldn't allocate for bind struct: %s", strerror(errno));
+							freeEverything(toFree, toFreeLength);
+							return NULL;
+						}
+						replaceOrAdd(toFree, &toFreeLength, NULL, currentBind);
+
+						config->nrBinds++;
+						struct config_bind** tmpBind = realloc(config->binds, config->nrBinds * sizeof(struct config_bind*));
+						if (tmpBind == NULL) {
+							error("config: couldn't reallocate for bind array: %s", strerror(errno));
+							freeEverything(toFree, toFreeLength);
+							return NULL;
+						}
+
+						replaceOrAdd(toFree, &toFreeLength, config->binds, tmpBind);
+						config->binds = tmpBind;
+						config->binds[config->nrBinds - 1] = currentBind;
+
+						currentBind->nrSites = 0;
+						currentBind->sites = NULL;
+						currentBind->addr = NULL;
+						currentBind->port = NULL;
+
+						#ifdef SSL_SUPPORT
+						currentBind->ssl = NULL;
+						#endif
+
+						state = BIND_VALUE;
+					} else if (strcmp(currentToken, "logging") == 0) {
+						state = LOGGING_BRACKETS_OPEN;
+					} else {
+						error("config: Unexpected token '%s' on line %d.", currentToken, currentLine);
 						freeEverything(toFree, toFreeLength);
 						return NULL;
 					}
-
-					currentBind = malloc(sizeof(struct config_bind));
-					if (currentBind == NULL) {
-						error("config: couldn't allocate for bind struct: %s", strerror(errno));
-						freeEverything(toFree, toFreeLength);
-						return NULL;
-					}
-					replaceOrAdd(toFree, &toFreeLength, NULL, currentBind);
-
-					config->nrBinds++;
-					struct config_bind** tmpBind = realloc(config->binds, config->nrBinds * sizeof(struct config_bind*));
-					if (tmpBind == NULL) {
-						error("config: couldn't reallocate for bind array: %s", strerror(errno));
-						freeEverything(toFree, toFreeLength);
-						return NULL;
-					}
-
-					replaceOrAdd(toFree, &toFreeLength, config->binds, tmpBind);
-					config->binds = tmpBind;
-					config->binds[config->nrBinds - 1] = currentBind;
-
-					currentBind->nrSites = 0;
-					currentBind->sites = NULL;
-					currentBind->addr = NULL;
-					currentBind->port = NULL;
-
-					#ifdef SSL_SUPPORT
-					currentBind->ssl = NULL;
-					#endif
-
-					state = BIND_VALUE;
 
 					break;
 				case BIND_VALUE: ;
@@ -212,7 +229,7 @@ struct config* config_parse(FILE* file) {
 
 						state = SITE_BRACKETS_OPEN;
 					} else if (strcmp(currentToken, "}") == 0) {
-						state = BIND;
+						state = ROOT;
 					} else if (strcmp(currentToken, "ssl") == 0) {						
 						#ifdef SSL_SUPPORT
 							if (currentBind->ssl != NULL) {
@@ -502,6 +519,84 @@ struct config* config_parse(FILE* file) {
 
 					state = HANDLER_CONTENT;
 					break;
+				case LOGGING_BRACKETS_OPEN:
+					if (strcmp(currentToken, "{") != 0) {
+						error("config: Unexpected token '%s' on line %d. '{' expected", currentToken, currentLine);
+						freeEverything(toFree, toFreeLength);
+						return NULL;
+					}
+
+					state = LOGGING_CONTENT;
+					break;
+				case LOGGING_CONTENT:
+					if (strcmp(currentToken, "access") == 0) {
+						state = LOGGING_ACCESS_FILE_EQUALS;
+					} else if (strcmp(currentToken, "server") == 0) {
+						state = LOGGING_SERVER_FILE_EQUALS;
+					} else if (strcmp(currentToken, "verbosity") == 0) {
+						state = LOGGING_SERVER_VERBOSITY_EQUALS;
+					} else if (strcmp(currentToken, "}") == 0) {
+						state = ROOT;
+					} else {
+						error("config: Unknown property '%s' on line %d.", currentToken, currentLine);
+						freeEverything(toFree, toFreeLength);
+						return NULL;
+					}
+					break;
+				case LOGGING_ACCESS_FILE_EQUALS:
+					if (strcmp(currentToken, "=") != 0) {
+						error("config: Unexpected token '%s' on line %d. '=' expected", currentToken, currentLine);
+						freeEverything(toFree, toFreeLength);
+						return NULL;
+					}
+					state = LOGGING_ACCESS_FILE_VALUE;
+					break;
+				case LOGGING_ACCESS_FILE_VALUE:
+					config->logging.accessLogfile = strclone(currentToken);
+					if (config->logging.accessLogfile == NULL) {
+						error("config: error cloning access log file string");
+						freeEverything(toFree, toFreeLength);
+						return NULL;
+					}
+
+					state = LOGGING_CONTENT;
+					break;
+				case LOGGING_SERVER_FILE_EQUALS:
+					if (strcmp(currentToken, "=") != 0) {
+						error("config: Unexpected token '%s' on line %d. '=' expected", currentToken, currentLine);
+						freeEverything(toFree, toFreeLength);
+						return NULL;
+					}
+					state = LOGGING_SERVER_FILE_VALUE;
+					break;
+				case LOGGING_SERVER_FILE_VALUE:
+					config->logging.serverLogfile = strclone(currentToken);
+					if (config->logging.serverLogfile == NULL) {
+						error("config: error cloning server log file string");
+						freeEverything(toFree, toFreeLength);
+						return NULL;
+					}
+
+					state = LOGGING_CONTENT;
+					break;
+				case LOGGING_SERVER_VERBOSITY_EQUALS:
+					if (strcmp(currentToken, "=") != 0) {
+						error("config: Unexpected token '%s' on line %d. '=' expected", currentToken, currentLine);
+						freeEverything(toFree, toFreeLength);
+						return NULL;
+					}
+					state = LOGGING_SERVER_VERBOSITY_VALUE;
+					break;
+				case LOGGING_SERVER_VERBOSITY_VALUE:
+					config->logging.serverVerbosity = strtologlevel(currentToken);
+
+					if (config->logging.serverVerbosity == UNKNOWN) {
+						error("config: Unexpected token '%s' on line %d.", currentToken, currentLine);
+						freeEverything(toFree, toFreeLength);
+						return NULL;
+					}
+					state = LOGGING_CONTENT;
+					break;
 				default:
 					assert(false);
 			}
@@ -516,7 +611,7 @@ struct config* config_parse(FILE* file) {
 		}
 	}
 
-	if (state != BIND) {
+	if (state != ROOT) {
 		error("config: unexpected EOF");
 		freeEverything(toFree, toFreeLength);
 		return NULL;
@@ -582,6 +677,29 @@ struct networkingConfig config_getNetworkingConfig(struct config* config) {
 
 	return networkingConfig;
 }
+
+void config_setLogging(struct config* config) {
+	setLogging(stdout, config->logging.serverVerbosity, true);
+
+	if (config->logging.serverLogfile != NULL) {
+		FILE* file = fopen(config->logging.serverLogfile, "a");
+		if (file == NULL) {
+			error("config: failed to open server log file %s: %s", config->logging.serverLogfile, strerror(errno));
+		} else {
+			setLogging(file, config->logging.serverVerbosity, false);
+		}
+	}
+
+	if (config->logging.accessLogfile != NULL) {
+		FILE* file = fopen(config->logging.accessLogfile, "a");
+		if (file == NULL) {
+			error("config: failed to open access log file %s: %s", config->logging.accessLogfile, strerror(errno));
+		} else {
+			setLogging(file, HTTP_ACCESS, false);
+		}
+	}
+}
+
 struct handler config_getHandler(struct config* config, struct metaData metaData, const char* host, struct bind* bind) {
 	struct handler handler = {};
 	

@@ -290,3 +290,20 @@ void critical(const char* format, ...) {
 	vlogging(CRITICAL, format, argptr);
 	va_end(argptr);
 }
+
+
+loglevel_t strtologlevel(const char* string) {
+	if (strcasecmp(string, "debug") == 0) {
+		return DEBUG;
+	} else if (strcasecmp(string, "info") == 0) {
+		return INFO;
+	} else if (strcasecmp(string, "warn") == 0) {
+		return WARN;
+	} else if (strcasecmp(string, "error") == 0) {
+		return ERROR;
+	} else if (strcasecmp(string, "critical") == 0) {
+		return CRITICAL;
+	} else {
+		return UNKNOWN;
+	}
+}

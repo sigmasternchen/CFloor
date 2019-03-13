@@ -514,8 +514,7 @@ void dataHandler(int signo) {
 			error("networking: connection ended");
 
 			buffer[length] = '\0';
-
-			debug("networking: buffer: '%d'", buffer);
+			debug("networking: buffer: '%s'", buffer);
 			dropConnection = true;
 		}
 		if (length > 0) {

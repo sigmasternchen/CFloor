@@ -721,6 +721,7 @@ void config_setLogging(struct config* config) {
 		if (file == NULL) {
 			error("config: failed to open server log file %s: %s", config->logging.serverLogfile, strerror(errno));
 		} else {
+			setbuf(file, NULL);
 			setLogging(file, config->logging.serverVerbosity, false);
 		}
 	}
@@ -730,6 +731,7 @@ void config_setLogging(struct config* config) {
 		if (file == NULL) {
 			error("config: failed to open access log file %s: %s", config->logging.accessLogfile, strerror(errno));
 		} else {
+			setbuf(file, NULL);
 			setLogging(file, HTTP_ACCESS, false);
 		}
 	}

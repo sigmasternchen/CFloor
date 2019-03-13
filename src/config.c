@@ -9,6 +9,8 @@
 #include "logging.h"
 #include "util.h"
 #include "networking.h"
+#include "misc.h"
+#include "status.h"
 
 #ifdef SSL_SUPPORT
 #include "ssl.h"
@@ -632,6 +634,12 @@ struct config* config_parse(FILE* file) {
 					freeEverything(toFree, toFreeLength);
 					return NULL;
 				}
+
+				if (ssl_initSettings(currentBind->ssl) < 0) {
+					error("config: error setting up ssl settings");
+					freeEverything(toFree, toFreeLength);
+					return NULL;
+				}
 			}
 		#endif
 
@@ -671,9 +679,36 @@ struct config* config_parse(FILE* file) {
 	return config;
 }
 
-struct networkingConfig config_getNetworkingConfig(struct config* config) {
-	struct networkingConfig networkingConfig = {};
+struct networkingConfig* config_getNetworkingConfig(struct config* config, struct networkingConfig* networkingConfig) {
+	struct bind* binds = malloc(config->nrBinds * sizeof(struct bind));
+	if (binds == NULL) {
+		error("config: couldn't malloc for bind array: %s", strerror(errno));
+		return NULL;
+	}
 
+	for (int i = 0; i < config->nrBinds; i++) {
+		binds[i] = (struct bind) {
+			.address = config->binds[i]->addr,
+			.port = config->binds[i]->port,
+			.settings = {
+				.ptr = config
+			},
+			#ifdef SSL_SUPPORT
+				.ssl = (config->binds[i]->ssl != NULL),
+				.ssl_settings = config->binds[i]->ssl
+			#else
+				.ssl = false
+			#endif
+		};
+	};
+
+	networkingConfig->binds = (struct binds) {
+		.number = config->nrBinds,
+		.binds = binds
+	};
+	networkingConfig->maxConnections = DEFAULT_MAX_CONNECTIONS;
+	networkingConfig->connectionTimeout = DEFAULT_CONNECTION_TIMEOUT;
+	networkingConfig->getHandler = &config_getHandler;
 
 	return networkingConfig;
 }
@@ -700,9 +735,88 @@ void config_setLogging(struct config* config) {
 	}
 }
 
-struct handler config_getHandler(struct config* config, struct metaData metaData, const char* host, struct bind* bind) {
+struct handler config_getHandler(struct metaData metaData, const char* host, struct bind* bind) {
+	struct config* config = (struct config*) (bind->settings.ptr);
 	struct handler handler = {};
+
+	struct config_bind* config_bind = NULL;
+
+	for (int i = 0; i < config->nrBinds; i++) {
+		if (strcmp(config->binds[i]->addr, bind->address) == 0 && strcmp(config->binds[i]->port, bind->port) == 0) {
+			config_bind = config->binds[i];
+			break;
+		}
+	}
+
+	if (config_bind == NULL) {
+		error("config: this bind does not exist: %s:%s", bind->address, bind->port);
+		handler.handler = status500;
+		return handler;
+	}
+
+	bool isWildcard = false;
+	struct config_site* config_site = NULL;
+
+	for (int i = 0; i < config_bind->nrSites; i++) {
+		if (config_bind->sites[i]->nrHostnames == 0) {
+			if (config_site != NULL && !isWildcard)
+				continue;
+
+			config_site = config_bind->sites[i];
+			isWildcard = true;
+			continue;
+		}
+
+		for (int j = 0; j < config_bind->sites[i]->nrHostnames; j++) {
+			if (strcmp(host, config_bind->sites[i]->hostnames[j]) == 0) {
+				config_site = config_bind->sites[i];
+				break;
+			}
+			if (strcmp(config_bind->sites[i]->hostnames[j], "*") == 0) {
+				if (config_site != NULL && !isWildcard)
+					continue;
+
+				config_site = config_bind->sites[i];
+				isWildcard = true;
+				break;
+			}
+		}
+
+		if (config_site != NULL)
+			break;
+	}
 	
+	if (config_site == NULL) {
+		error("config: the site '%s' does not exist for bind %s:%s", host, bind->address, bind->port);
+		handler.handler = status500;
+		return handler;
+	}
+
+	int matchLength = 0;
+	struct config_handler* config_handler = NULL;	
+
+	for (int i = 0; i < config_site->nrHandlers; i++) {
+		char* dir = config_site->handlers[i]->dir;
+		int dirLength = strlen(dir);
+		if (dirLength <= matchLength)
+			continue;
+
+		if (isInDir(metaData.path, dir)) {
+			matchLength = dirLength;
+			config_handler = config_site->handlers[i];
+		}		
+	}
+
+	if (config_handler == NULL) {
+		error("config: no handler for %s on %s:%s", metaData.uri, bind->address, bind->port);
+		handler.handler = status500;
+		return handler;
+	}
+
+	handler.handler = config_handler->handler;
+	handler.data.ptr = &(config_handler->settings);
+
+
 	return handler;
 }
 

@@ -99,7 +99,7 @@ void cgiHandler(struct request request, struct response response) {
 
 		setEnvStatic("GATEWAY_INTERFACE", "CGI/1.1");
 		setEnvStatic("DOCUMENT_ROOT", documentRoot);
-		setEnvStatic("HTTPS", request.bind.tls ? "on" : "off");
+		setEnvStatic("HTTPS", request.bind.ssl ? "on" : "off");
 		setEnvStatic("QUERY_STRING", request.metaData.queryString);
 		setEnvStatic("REQUEST_METHOD", methodString(request.metaData));
 		setEnvStatic("REQUEST_URI", request.metaData.uri);

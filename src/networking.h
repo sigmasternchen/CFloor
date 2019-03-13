@@ -80,6 +80,9 @@ struct networkingConfig {
 
 #define TIMING_CLOCK CLOCK_REALTIME
 
+#define DEFAULT_MAX_CONNECTIONS (1024)
+#define DEFAULT_CONNECTION_TIMEOUT (30000)
+
 void networking_init(struct networkingConfig networkingConfig);
 
 #endif

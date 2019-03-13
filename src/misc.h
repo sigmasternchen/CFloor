@@ -52,8 +52,8 @@ struct bind_private {
 struct bind {
 	const char* address;
 	const char* port;
-	bool tls;
 	union userData settings;
+	bool ssl;
 
 	#ifdef SSL_SUPPORT
 	struct ssl_settings* ssl_settings;

@@ -78,9 +78,9 @@ logging {
 
 struct config* config_parse(FILE* file);
 
-struct networkingConfig config_getNetworkingConfig(struct config* config);
+struct networkingConfig* config_getNetworkingConfig(struct config* config, struct networkingConfig* networkingConfig);
 void config_setLogging(struct config* config);
-struct handler config_getHandler(struct config* config, struct metaData metaData, const char* host, struct bind* bind);
+struct handler config_getHandler(struct metaData metaData, const char* host, struct bind* bind);
 
 void config_destroy(struct config* config);
 

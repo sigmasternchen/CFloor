@@ -53,6 +53,7 @@ void* copyFromSslToFd(void* data) {
 	}
 
 	debug("ssl: read thread finished %d", r);
+	debug("ssl: ssl error: %s", ERR_error_string(ERR_get_error(), NULL));
 
 	return NULL;
 }

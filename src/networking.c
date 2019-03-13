@@ -512,6 +512,10 @@ void dataHandler(int signo) {
 			}
 		} else if (tmp == 0) {
 			error("networking: connection ended");
+
+			buffer[length] = '\0';
+
+			debug("networking: buffer: '%d'", buffer);
 			dropConnection = true;
 		}
 		if (length > 0) {

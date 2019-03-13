@@ -51,6 +51,9 @@ void* copyFromSslToFd(void* data) {
 		write(connection->_readfd, &b, 1);
 	}
 
+	debug("ssl: read thread finished");
+	debug("ssl: closing read pipe");
+
 	close(connection->_readfd);
 
 	return NULL;
@@ -63,6 +66,8 @@ void* copyFromFdToSsl(void* data) {
 	while(read(connection->_writefd, &b, 1) == 1) {
 		SSL_write(connection->instance, &b, 1);
 	}
+
+	debug("ssl: write thread finished");
 
 	return NULL;
 }
@@ -135,6 +140,7 @@ struct ssl_connection* ssl_initConnection(struct ssl_settings* settings, int soc
 
 
 void ssl_closeConnection(struct ssl_connection* connection) {
+	info("ssl: closing connection");
 	close(connection->writefd);
 	close(connection->readfd);
 	close(connection->_writefd);

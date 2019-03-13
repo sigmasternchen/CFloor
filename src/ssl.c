@@ -60,11 +60,12 @@ void* copyFromFdToSsl(void* data) {
 	struct ssl_connection* connection = (struct ssl_connection*) data;
 
 	char b;
-	while(read(connection->_writefd, &b, 1) == 1) {
+	int r;
+	while((r = read(connection->_writefd, &b, 1)) == 1) {
 		SSL_write(connection->instance, &b, 1);
 	}
 
-	debug("ssl: write thread finished");
+	debug("ssl: write thread finished %d", r);
 
 	return NULL;
 }

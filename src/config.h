@@ -8,11 +8,20 @@
 #include "files.h"
 #include "cgi.h"
 
+#ifdef SSL_SUPPORT
+	#include "ssl.h"
+#endif
+
 struct config {
 	int nrBinds;
 	struct config_bind {
 		char* addr;
 		char* port;
+		
+		#ifdef SSL_SUPPORT
+			struct ssl_settings* ssl;
+		#endif
+
 		int nrSites;
 		struct config_site {
 			int nrHostnames;
@@ -36,6 +45,10 @@ struct config {
 config format
 
 bind [addr]:[port] {
+	ssl {
+		key = file
+		cert = certfile
+	}
 	site {
 		hostname|alias = "[host]"
 		root = "/"

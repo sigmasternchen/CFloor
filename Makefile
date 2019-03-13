@@ -8,11 +8,11 @@ BIN_NAME = cfloor
 OBJS     = obj/networking.o obj/linked.o obj/logging.o obj/signals.o obj/headers.o obj/misc.o obj/status.o obj/files.o obj/mime.o obj/cgi.o obj/util.o obj/ssl.o obj/config.o
 DEPS     = $(OBJS:%.o=%.d)
 
-all: $(BIN_NAME)
+all: $(BIN_NAME) test
 
 ssl: CFLAGS += -DSSL_SUPPORT -Icrypto
 ssl: LDFLAGS += -lcrypto -lssl
-ssl: obj/ssl.o $(BIN_NAME)
+ssl: obj/ssl.o $(BIN_NAME) test
 
 $(BIN_NAME): obj/main.o $(OBJS)
 	$(LD) $(LDFLAGS) -o $@ $^

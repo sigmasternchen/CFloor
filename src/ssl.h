@@ -15,8 +15,8 @@ struct ssl_connection {
 };
 
 struct ssl_settings {
-	const char* privateKey;
-	const char* certificate;
+	char* privateKey;
+	char* certificate;
 	struct {
 		SSL_CTX* ctx;
 	} _private;

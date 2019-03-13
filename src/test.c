@@ -238,10 +238,24 @@ void testHeaders() {
 }
 
 void testConfig() {
-	struct config* config = config_parse(fopen("test.conf", "r"));
+	FILE* file;
 
+	#ifdef SSL_SUPPORT
+		file = fopen("test-with-ssl.conf", "r");
+	#else
+		file = fopen("test.conf", "r");
+	#endif
+
+	struct config* config = config_parse(file);
+	
 	checkNull(config, "null check");
-	checkInt(config->nrBinds, 1, "bind no check");
+
+	#ifdef SSL_SUPPORT
+		checkInt(config->nrBinds, 2, "bind no check");
+	#else
+		checkInt(config->nrBinds, 1, "bind no check");
+	#endif
+
 	checkString(config->binds[0]->addr, "0.0.0.0", "bind addr check");
 	checkString(config->binds[0]->port, "80", "bind port check");
 	checkInt(config->binds[0]->nrSites, 1, "site no check");
@@ -256,7 +270,27 @@ void testConfig() {
 	checkInt(config->binds[0]->sites[0]->handlers[0]->settings.fileSettings.indexfiles.number, 1, "handler settings index no");
 	checkString(config->binds[0]->sites[0]->handlers[0]->settings.fileSettings.indexfiles.files[0], "index.html", "handler settings index check");
 
-	
+	#ifdef SSL_SUPPORT
+		checkString(config->binds[1]->addr, "0.0.0.0", "bind addr check");
+		checkString(config->binds[1]->port, "443", "bind port check");
+		checkNull(config->binds[1]->ssl, "ssl null check");
+		checkString(config->binds[1]->ssl->privateKey, "ssl.key", "ssl key check");
+		checkString(config->binds[1]->ssl->certificate, "ssl.crt", "ssl cert check");
+		checkInt(config->binds[1]->nrSites, 1, "site no check");
+		checkInt(config->binds[1]->sites[0]->nrHostnames, 1, "site hostname no check");
+		checkString(config->binds[1]->sites[0]->hostnames[0], "example.com", "site hostname check");
+		checkString(config->binds[1]->sites[0]->documentRoot, "/var/www", "site document root check");
+		checkInt(config->binds[1]->sites[0]->nrHandlers, 1, "handler no check");
+		checkString(config->binds[1]->sites[0]->handlers[0]->dir, "/", "handler dir check");
+		checkInt(config->binds[1]->sites[0]->handlers[0]->type, FILE_HANDLER_NO, "handler type no check");
+		checkVoid(config->binds[1]->sites[0]->handlers[0]->handler, &fileHandler, "handler ptr check");
+		checkString(config->binds[1]->sites[0]->handlers[0]->settings.fileSettings.documentRoot, "/var/www", "handler settings root check");
+		checkInt(config->binds[1]->sites[0]->handlers[0]->settings.fileSettings.indexfiles.number, 1, "handler settings index no");
+		checkString(config->binds[1]->sites[0]->handlers[0]->settings.fileSettings.indexfiles.files[0], "index.html", "handler settings index check");
+	#endif
+
+	fclose(file);	
+
 	config_destroy(config);
 }
 

@@ -9,6 +9,10 @@
 #include "util.h"
 #include "networking.h"
 
+#ifdef SSL_SUPPORT
+#include "ssl.h"
+#endif
+
 #define LENGTH_OF_TOFREE_ARRAY (256)
 #define MAX_TOKEN_LENGTH (128)
 
@@ -44,22 +48,28 @@ struct config* config_parse(FILE* file) {
 
 
 	#define BIND (0)
-	#define BIND_VALUE (1)
-	#define BIND_BRACKETS_OPEN (2)
-	#define BIND_CONTENT (4)
-	#define SITE_BRACKETS_OPEN (5)
-	#define SITE_CONTENT (7)
-	#define SITE_HOST_EQUALS (8)
-	#define SITE_HOST_VALUE (9)
-	#define SITE_ROOT_EQUALS (10)
-	#define SITE_ROOT_VALUE (11)
-	#define HANDLER_VALUE (12)
-	#define HANDLER_BRACKETS_OPEN (13)
-	#define HANDLER_CONTENT (15)
-	#define TYPE_EQUALS (16)
-	#define TYPE_VALUE (17)
-	#define INDEX_EQUALS (18)
-	#define INDEX_VALUE (19)
+	#define BIND_VALUE (10)
+	#define BIND_BRACKETS_OPEN (11)
+	#define BIND_CONTENT (12)
+	#define SSL_BRACKETS_OPEN (130)
+	#define SSL_CONTENT (131)
+	#define SSL_KEY_EQUALS (132)
+	#define SSL_KEY_VALUE (133)
+	#define SSL_CERT_EQUALS (134)
+	#define SSL_CERT_VALUE (135)
+	#define SITE_BRACKETS_OPEN (140)
+	#define SITE_CONTENT (141)
+	#define SITE_HOST_EQUALS (142)
+	#define SITE_HOST_VALUE (143)
+	#define SITE_ROOT_EQUALS (144)
+	#define SITE_ROOT_VALUE (145)
+	#define HANDLER_VALUE (1460)
+	#define HANDLER_BRACKETS_OPEN (1461)
+	#define HANDLER_CONTENT (1462)
+	#define TYPE_EQUALS (1463)
+	#define TYPE_VALUE (1464)
+	#define INDEX_EQUALS (1465)
+	#define INDEX_VALUE (1466)
 	int state = BIND;
 
 	struct config_bind* currentBind = NULL;
@@ -83,6 +93,9 @@ struct config* config_parse(FILE* file) {
 						
 			currentToken[currentTokenLength] = '\0';
 
+			char* tmp;
+			char** tmpArray;
+
 			switch(state) {
 				case BIND:
 					if (strcmp(currentToken, "bind") != 0) {
@@ -100,21 +113,25 @@ struct config* config_parse(FILE* file) {
 					replaceOrAdd(toFree, &toFreeLength, NULL, currentBind);
 
 					config->nrBinds++;
-					struct config_bind** tmp = realloc(config->binds, config->nrBinds * sizeof(struct config_bind*));
-					if (tmp == NULL) {
+					struct config_bind** tmpBind = realloc(config->binds, config->nrBinds * sizeof(struct config_bind*));
+					if (tmpBind == NULL) {
 						error("config: couldn't reallocate for bind array: %s", strerror(errno));
 						freeEverything(toFree, toFreeLength);
 						return NULL;
 					}
 
-					replaceOrAdd(toFree, &toFreeLength, config->binds, tmp);
-					config->binds = tmp;
+					replaceOrAdd(toFree, &toFreeLength, config->binds, tmpBind);
+					config->binds = tmpBind;
 					config->binds[config->nrBinds - 1] = currentBind;
 
 					currentBind->nrSites = 0;
 					currentBind->sites = NULL;
 					currentBind->addr = NULL;
 					currentBind->port = NULL;
+
+					#ifdef SSL_SUPPORT
+					currentBind->ssl = NULL;
+					#endif
 
 					state = BIND_VALUE;
 
@@ -196,12 +213,103 @@ struct config* config_parse(FILE* file) {
 						state = SITE_BRACKETS_OPEN;
 					} else if (strcmp(currentToken, "}") == 0) {
 						state = BIND;
+					} else if (strcmp(currentToken, "ssl") == 0) {						
+						#ifdef SSL_SUPPORT
+							if (currentBind->ssl != NULL) {
+								error("config: ssl settings for this bind already defined; line %d", currentLine);
+								freeEverything(toFree, toFreeLength);
+								return NULL;
+							}
+					
+							currentBind->ssl = malloc(sizeof(struct ssl_settings));
+							if (currentBind->ssl == NULL) {
+								error("config: couldn't allocate for ssl settings: %s", strerror(errno));
+								freeEverything(toFree, toFreeLength);
+								return NULL;
+							}
+							replaceOrAdd(toFree, &toFreeLength, NULL, currentBind->ssl);
+
+							currentBind->ssl->privateKey = NULL;
+							currentBind->ssl->certificate = NULL;
+
+							state = SSL_BRACKETS_OPEN;
+						#else
+								error("config: not compiled with ssl support");
+								freeEverything(toFree, toFreeLength);
+								return NULL;
+						#endif
 					} else {
 						error("config: Unknown property '%s' on line %d.", currentToken, currentLine);
 						freeEverything(toFree, toFreeLength);
 						return NULL;
 					}
 					break;
+				#ifdef SSL_SUPPORT
+					case SSL_BRACKETS_OPEN:
+						if (strcmp(currentToken, "{") != 0) {
+							error("config: Unexpected token '%s' on line %d. '{' expected", currentToken, currentLine);
+							freeEverything(toFree, toFreeLength);
+							return NULL;
+						}
+
+						state = SSL_CONTENT;
+						break;
+					case SSL_CONTENT:
+						if (strcmp(currentToken, "key") == 0) {
+							state = SSL_KEY_EQUALS;
+						} else if (strcmp(currentToken, "cert") == 0) {
+							state = SSL_CERT_EQUALS;
+						} else if (strcmp(currentToken, "}") == 0) {
+							state = BIND_CONTENT;
+						} else {
+							error("config: Unknown property '%s' on line %d.", currentToken, currentLine);
+							freeEverything(toFree, toFreeLength);
+							return NULL;
+						}
+						break;
+					case SSL_KEY_EQUALS:
+						if (strcmp(currentToken, "=") != 0) {
+							error("config: Unexpected token '%s' on line %d. '=' expected", currentToken, currentLine);
+							freeEverything(toFree, toFreeLength);
+							return NULL;
+						}
+						state = SSL_KEY_VALUE;
+						break;
+					case SSL_KEY_VALUE: ;
+						tmp = strclone(currentToken);
+						if (tmp == NULL) {
+							error("config: error cloning ssl key string");
+							freeEverything(toFree, toFreeLength);
+							return NULL;
+						}
+						replaceOrAdd(toFree, &toFreeLength, NULL, tmp);
+						
+						currentBind->ssl->privateKey = tmp;
+
+						state = SSL_CONTENT;
+						break;
+					case SSL_CERT_EQUALS:
+						if (strcmp(currentToken, "=") != 0) {
+							error("config: Unexpected token '%s' on line %d. '=' expected", currentToken, currentLine);
+							freeEverything(toFree, toFreeLength);
+							return NULL;
+						}
+						state = SSL_CERT_VALUE;
+						break;
+					case SSL_CERT_VALUE: ;
+						tmp = strclone(currentToken);
+						if (tmp == NULL) {
+							error("config: error cloning ssl cert string");
+							freeEverything(toFree, toFreeLength);
+							return NULL;
+						}
+						replaceOrAdd(toFree, &toFreeLength, NULL, tmp);
+						
+						currentBind->ssl->certificate = tmp;
+
+						state = SSL_CONTENT;
+						break;
+				#endif
 				case SITE_BRACKETS_OPEN:
 					if (strcmp(currentToken, "{") != 0) {
 						error("config: Unexpected token '%s' on line %d. '{' expected", currentToken, currentLine);
@@ -260,9 +368,9 @@ struct config* config_parse(FILE* file) {
 					}
 					state = SITE_HOST_VALUE;
 					break;
-				case SITE_HOST_VALUE: ;
-					char** tmpArray = realloc(currentSite->hostnames, ++currentSite->nrHostnames * sizeof(char*));
-					if (tmp == NULL) {
+				case SITE_HOST_VALUE:
+					tmpArray = realloc(currentSite->hostnames, ++currentSite->nrHostnames * sizeof(char*));
+					if (tmpArray == NULL) {
 						error("config: error allocating hostname array");
 						freeEverything(toFree, toFreeLength);
 						return NULL;
@@ -270,15 +378,15 @@ struct config* config_parse(FILE* file) {
 					replaceOrAdd(toFree, &toFreeLength, currentSite->hostnames, tmpArray);
 					currentSite->hostnames = tmpArray;
 					
-					char* clone = strclone(currentToken);
-					if (clone == NULL) {
+					tmp = strclone(currentToken);
+					if (tmp == NULL) {
 						error("config: error cloning hostname string");
 						freeEverything(toFree, toFreeLength);
 						return NULL;
 					}
-					replaceOrAdd(toFree, &toFreeLength, NULL, clone);
+					replaceOrAdd(toFree, &toFreeLength, NULL, tmp);
 					
-					currentSite->hostnames[currentSite->nrHostnames - 1] = clone;
+					currentSite->hostnames[currentSite->nrHostnames - 1] = tmp;
 
 					state = SITE_CONTENT;
 					break;
@@ -291,21 +399,21 @@ struct config* config_parse(FILE* file) {
 					state = SITE_ROOT_VALUE;
 					break;
 				case SITE_ROOT_VALUE:
-					clone = strclone(currentToken);
-					if (clone == NULL) {
+					tmp = strclone(currentToken);
+					if (tmp == NULL) {
 						error("config: error cloning document root string");
 						freeEverything(toFree, toFreeLength);
 						return NULL;
 					}
-					replaceOrAdd(toFree, &toFreeLength, NULL, clone);
+					replaceOrAdd(toFree, &toFreeLength, NULL, tmp);
 					
-					currentSite->documentRoot = clone;
+					currentSite->documentRoot = tmp;
 
 					state = SITE_CONTENT;
 					break;
 				case HANDLER_VALUE:
 					currentHandler->dir = strclone(currentToken);
-					if (clone == NULL) {
+					if (currentHandler->dir == NULL) {
 						error("config: error cloning handle directory string");
 						freeEverything(toFree, toFreeLength);
 						return NULL;
@@ -374,7 +482,7 @@ struct config* config_parse(FILE* file) {
 					struct fileSettings* settings = &(currentHandler->settings.fileSettings);
 
 					tmpArray = realloc(settings->indexfiles.files, ++(settings->indexfiles.number) * sizeof(char*));
-					if (tmp == NULL) {
+					if (tmpArray == NULL) {
 						error("config: error allocating hostname array");
 						freeEverything(toFree, toFreeLength);
 						return NULL;
@@ -382,15 +490,15 @@ struct config* config_parse(FILE* file) {
 					replaceOrAdd(toFree, &toFreeLength, settings->indexfiles.files, tmpArray);
 					settings->indexfiles.files = tmpArray;
 
-					clone = strclone(currentToken);
-					if (clone == NULL) {
+					tmp = strclone(currentToken);
+					if (tmp == NULL) {
 						error("config: error cloning hostname string");
 						freeEverything(toFree, toFreeLength);
 						return NULL;
 					}
-					replaceOrAdd(toFree, &toFreeLength, NULL, clone);
+					replaceOrAdd(toFree, &toFreeLength, NULL, tmp);
 					
-					settings->indexfiles.files[settings->indexfiles.number - 1] = clone;
+					settings->indexfiles.files[settings->indexfiles.number - 1] = tmp;
 
 					state = HANDLER_CONTENT;
 					break;
@@ -416,6 +524,22 @@ struct config* config_parse(FILE* file) {
 
 	for (int i = 0; i < config->nrBinds; i++) {
 		currentBind = config->binds[i];
+
+		#ifdef SSL_SUPPORT
+			if (currentBind->ssl != NULL) {
+				if (currentBind->ssl->privateKey == NULL) {
+					error("config: ssl private key missing for %s:%s", currentBind->addr, currentBind->port);
+					freeEverything(toFree, toFreeLength);
+					return NULL;
+				}
+				if (currentBind->ssl->certificate == NULL) {
+					error("config: ssl certificate missing for %s:%s", currentBind->addr, currentBind->port);
+					freeEverything(toFree, toFreeLength);
+					return NULL;
+				}
+			}
+		#endif
+
 		for(int j = 0; j < currentBind->nrSites; j++) {
 			currentSite = currentBind->sites[j];
 			
@@ -477,6 +601,14 @@ void config_destroy(struct config* config) {
 
 		free(currentBind->addr);
 		free(currentBind->port);
+
+		#ifdef SSL_SUPPORT
+			if (currentBind->ssl != NULL) {
+				free(currentBind->ssl->privateKey);
+				free(currentBind->ssl->certificate);
+				free(currentBind->ssl);
+			}
+		#endif
 
 		for(int j = 0; j < currentBind->nrSites; j++) {
 			currentSite = currentBind->sites[j];

@@ -418,7 +418,7 @@ struct config* config_parse(FILE* file) {
 					state = SITE_ROOT_VALUE;
 					break;
 				case SITE_ROOT_VALUE:
-					tmp = realpath(currentToken);
+					tmp = realpath(currentToken, NULL);
 					if (tmp == NULL) {
 						error("config: error getting realpath of document root: %s", strerror(errno));
 						freeEverything(toFree, toFreeLength);
@@ -709,6 +709,7 @@ struct networkingConfig* config_getNetworkingConfig(struct config* config, struc
 	networkingConfig->maxConnections = DEFAULT_MAX_CONNECTIONS;
 	networkingConfig->connectionTimeout = DEFAULT_CONNECTION_TIMEOUT;
 	networkingConfig->getHandler = &config_getHandler;
+	networkingConfig->defaultHeaders = headers_create();
 
 	return networkingConfig;
 }

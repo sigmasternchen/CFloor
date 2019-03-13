@@ -63,6 +63,9 @@ void* copyFromSslToFd(void* data) {
 			break;
 		} else if (error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE) {
 			debug("ssl: trying again");
+
+			usleep(10000);
+
 			continue;
 		} else {
 			warn("ssl: connection had an error");

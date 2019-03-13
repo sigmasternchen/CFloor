@@ -15,6 +15,8 @@
 #include "ssl.h"
 #endif
 
+#define SERVER_STRING ("CFloor V0.1")
+
 struct networkingConfig networkingConfig;
 struct config* config;
 
@@ -111,6 +113,8 @@ int main(int argc, char** argv) {
 		shutdownHandler();
 		return 0;
 	}
+
+	headers_mod(&(networkingConfig.defaultHeaders), "Server", SERVER_STRING);
 
 	networking_init(networkingConfig);
 

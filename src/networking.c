@@ -147,8 +147,28 @@ void cleanup() {
 	debug("cleanup: %d/%d freed", freed, length);
 }
 
+void setNonBlocking(int fd, bool nonBlocking) {
+	int flags = fcntl(fd, F_GETFL);
+	if (flags < 0) {
+		warn("networking: couldn't get socket flags");
+		// ignore; maybe the socket is dead
+		return;
+	}
+	
+	if (nonBlocking) {
+		flags |= O_NONBLOCK;
+	} else {
+		flags &= ~O_NONBLOCK;
+	}
+	if (fcntl(fd, F_SETFL, flags) < 0) {
+		error("networking: couldn't set socket flags");
+		return;
+	}
+
+}
+
 void setSIGIO(int fd, bool enable) {
-	// set socket to non-blocking, asynchronous
+	// set socket to asynchronous
 
 	int flags = fcntl(fd, F_GETFL);
 	if (flags < 0) {
@@ -156,8 +176,7 @@ void setSIGIO(int fd, bool enable) {
 		// ignore; maybe the socket is dead
 		return;
 	}
-
-	flags |= O_NONBLOCK;
+	
 	if (enable) {
 		flags |= O_ASYNC;
 	} else {
@@ -692,11 +711,10 @@ void* listenThread(void* _bind) {
 
 		info("networking: new connection from %s:%s", peer.addr, peer.portStr);
 
-		connection->readfd = tmp;
-		connection->writefd = tmp;
-
 		#ifdef SSL_SUPPORT
-		if (bindObj->ssl_settings != NULL) {
+		if (bindObj->ssl_settings != NULL) {			
+			setNonBlocking(tmp, false);
+
 			struct ssl_connection* sslConnection = ssl_initConnection(bindObj->ssl_settings, tmp);
 			if (sslConnection == NULL) {
 				free(connection);
@@ -708,9 +726,24 @@ void* listenThread(void* _bind) {
 			connection->sslConnection = sslConnection;
 			connection->readfd = sslConnection->readfd;
 			connection->writefd = sslConnection->writefd;
+
+			setNonBlocking(connection->readfd, true);
+			setSIGIO(connection->readfd, true);	
 		} else {
 			connection->sslConnection = NULL;
+
+			connection->readfd = tmp;
+			connection->writefd = tmp;
+
+			setNonBlocking(tmp, true);
+			setSIGIO(tmp, true);	
 		}
+		#else 
+			connection->readfd = tmp;
+			connection->writefd = tmp;
+
+			setNonBlocking(tmp, true);
+			setSIGIO(tmp, true);
 		#endif
 
 		connection->state = OPENED;
@@ -743,8 +776,6 @@ void* listenThread(void* _bind) {
 		updateTiming(connection, false);
 
 		linked_push(&connectionList, connection);
-		
-		setSIGIO(tmp, true);
 
 		// trigger sigio in case we missed something
 		kill(getpid(), SIGIO);

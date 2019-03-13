@@ -427,7 +427,6 @@ void dataHandler(int signo) {
 		if (connection->currentHeaderLength > 0)
 			last = connection->currentHeader[connection->currentHeaderLength - 1];
 		while((tmp = read(connection->readfd, &c, 1)) > 0) {
-			printf("%c", c);
 			if (last == '\r' && c == '\n') {
 				if (dumpHeaderBuffer(&(buffer[0]), length, connection) < 0) {
 					dropConnection = true;

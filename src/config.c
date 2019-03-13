@@ -418,9 +418,9 @@ struct config* config_parse(FILE* file) {
 					state = SITE_ROOT_VALUE;
 					break;
 				case SITE_ROOT_VALUE:
-					tmp = strclone(currentToken);
+					tmp = realpath(currentToken);
 					if (tmp == NULL) {
-						error("config: error cloning document root string");
+						error("config: error getting realpath of document root: %s", strerror(errno));
 						freeEverything(toFree, toFreeLength);
 						return NULL;
 					}

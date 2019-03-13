@@ -52,7 +52,6 @@ void* copyFromSslToFd(void* data) {
 	}
 
 	debug("ssl: read thread finished");
-	error("ssl: failed to create new connection: %s", ERR_error_string(b, NULL));
 
 	return NULL;
 }

@@ -241,9 +241,9 @@ void testConfig() {
 	FILE* file;
 
 	#ifdef SSL_SUPPORT
-		file = fopen("test-with-ssl.conf", "r");
+		file = fopen("tests/test-with-ssl.conf", "r");
 	#else
-		file = fopen("test.conf", "r");
+		file = fopen("tests/test.conf", "r");
 	#endif
 
 	struct config* config = config_parse(file);

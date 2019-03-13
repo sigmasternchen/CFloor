@@ -231,7 +231,7 @@ void vlogging(loglevel_t loglevel, const char* format, va_list argptr) {
 		sem_wait(&(logger[i].write_sem));
 
 		fprintf(logger[i].file, "%s %s ", timestamp, loglevelString);
-		vfprintf(logger[i].file, format, argptr);
+		vfprintf(logger[i].file, format, local);
 		fprintf(logger[i].file, "\n");
 
 		sem_post(&(logger[i].write_sem));

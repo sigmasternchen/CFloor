@@ -26,7 +26,7 @@ valgrind: clean test
 
 -include $(DEPS)
 
-obj/%.o: src/%.c
+obj/%.o: src/%.c obj
 	$(CC) $(CFLAGS) -MMD -c -o $@ $<
 
 obj:

@@ -38,6 +38,8 @@ int ssl_initSettings(struct ssl_settings* settings) {
 		return -1;
 	}
 
+	SSL_CTX_set_mode(ctx, SSL_MODE_AUTO_RETRY);
+
 	settings->_private.ctx = ctx;
 
 	return 0;

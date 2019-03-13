@@ -52,9 +52,6 @@ void* copyFromSslToFd(void* data) {
 	}
 
 	debug("ssl: read thread finished");
-	debug("ssl: closing read pipe");
-
-	close(connection->_readfd);
 
 	return NULL;
 }

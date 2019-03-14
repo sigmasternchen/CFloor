@@ -212,6 +212,11 @@ struct statusStrings getStatusStrings(int status) {
 				.statusString = "Expectation Failed",
 				.statusFormat = ""
 			};
+		case 418:
+			return (struct statusStrings) {
+				.statusString = "I'm a teapot",
+				.statusFormat = ""
+			};
 		case 420:
 			return (struct statusStrings) {
 				.statusString = "Policy Not Fulfilled",

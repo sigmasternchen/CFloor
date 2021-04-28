@@ -47,6 +47,7 @@ struct connection {
 	enum connectionState state;
 	struct peer peer;
 	struct bind* bind;
+	pthread_mutex_t lock;
 	volatile sig_atomic_t inUse;
 	int readfd;
 	int writefd;

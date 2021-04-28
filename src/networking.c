@@ -70,11 +70,13 @@ void cleanup() {
 
 		long diffms = timespacAgeMs(connection->timing.lastUpdate);
 
+		pthread_mutex_lock(&(connection->lock));
 		if (connection->state != OPENED) {
 			unlink = true;
 		} else if (diffms > networkingConfig.connectionTimeout) {
 			connection->state = ABORTED;
 		}
+		pthread_mutex_unlock(&(connection->lock));
 
 		if (unlink) {	
 			linked_push(&connectionsToFree, connection);
@@ -94,7 +96,11 @@ void cleanup() {
 	while(link != NULL) {
 		length++;
 		struct connection* connection = link->data;
-		if (connection->inUse == 0) {
+		
+		pthread_mutex_lock(&(connection->lock));
+		if (connection->inUse == 0) {	
+			linked_unlink(link);
+		
 			freed++;
 
 			#ifdef SSL_SUPPORT
@@ -136,9 +142,12 @@ void cleanup() {
 			if (connection->peer.name != NULL)
 				free(connection->peer.name);
 
-			free(connection);
+			pthread_mutex_unlock(&(connection->lock));
+			pthread_mutex_destroy(&(connection->lock));
 
-			linked_unlink(link);
+			free(connection);
+		} else {	
+			pthread_mutex_unlock(&(connection->lock));
 		}
 
 		link = linked_next(link);
@@ -244,7 +253,9 @@ void safeEndConnection(struct connection* connection, bool force) {
 	close(connection->readfd);
 	close(connection->writefd);
 
+	pthread_mutex_lock(&(connection->lock));
 	connection->inUse--;
+	pthread_mutex_unlock(&(connection->lock));
 }
 
 int sendHeader(int statusCode, struct headers* headers, struct request* request) {
@@ -333,8 +344,12 @@ void* requestThread(void* data) {
 	if (pipe(&(pipefd[0])) < 0) {
 		error("networking: Couldn't create reponse pipe: %s", strerror(errno));
 		warn("Aborting request.");
+		
+		pthread_mutex_lock(&(connection->lock));
 		connection->state = ABORTED;
 		connection->inUse--;
+		pthread_mutex_unlock(&(connection->lock));
+		
 		return NULL;
 	}
 
@@ -348,8 +363,12 @@ void* requestThread(void* data) {
 
 		error("networking: Couldn't create reponse pipe: %s", strerror(errno));
 		warn("Aborting request.");
+		
+		pthread_mutex_lock(&(connection->lock));
 		connection->state = ABORTED;
 		connection->inUse--;
+		pthread_mutex_unlock(&(connection->lock));
+		
 		return NULL;
 	}
 
@@ -365,8 +384,12 @@ void* requestThread(void* data) {
 		
 		error("networking: Couldn't start helper thread.");
 		warn("networking: Aborting request.");
+		
+		pthread_mutex_lock(&(connection->lock));
 		connection->state = ABORTED;
 		connection->inUse--;
+		pthread_mutex_unlock(&(connection->lock));
+		
 		return NULL;
 	}
 	if (startCopyThread(response, connection->writefd, false, &(connection->threads.helper[1])) < 0) {
@@ -377,8 +400,12 @@ void* requestThread(void* data) {
 	
 		error("networking: Couldn't start helper thread.");
 		warn("networking: Aborting request.");
+		
+		pthread_mutex_lock(&(connection->lock));
 		connection->state = ABORTED;
 		connection->inUse--;
+		pthread_mutex_unlock(&(connection->lock));
+		
 		return NULL;
 	}
 
@@ -390,8 +417,12 @@ void* requestThread(void* data) {
 
 		error("networking: Couldn't start response thread.");
 		warn("networking: Aborting request.");
+		
+		pthread_mutex_lock(&(connection->lock));
 		connection->state = ABORTED;
 		connection->inUse--;
+		pthread_mutex_unlock(&(connection->lock));
+		
 		return NULL;
 	}
 
@@ -413,14 +444,21 @@ void* requestThread(void* data) {
 }
 
 void startRequestHandler(struct connection* connection) {
+
+	pthread_mutex_lock(&(connection->lock));
 	connection->inUse++;
+	pthread_mutex_unlock(&(connection->lock));
 
 	debug("networking: starting request handler");
 	if (pthread_create(&(connection->threads.request), NULL, &requestThread, connection) != 0) {
 		error("networking: Couldn't start request thread.");
 		warn("networking: Aborting request.");
+		
+		pthread_mutex_lock(&(connection->lock));
 		connection->state = ABORTED;
 		connection->inUse--;
+		pthread_mutex_unlock(&(connection->lock));
+		
 		return;
 	}
 }
@@ -434,9 +472,15 @@ void dataHandler(int signo) {
 	for(link_t* link = linked_first(&connectionList); link != NULL; link = linked_next(link)) {
 		debug("networking: connection %p", link);
 		struct connection* connection = link->data;
-		if (connection->state != OPENED)
+		
+		pthread_mutex_lock(&(connection->lock));
+		if (connection->state != OPENED) {
+			pthread_mutex_unlock(&(connection->lock));
 			continue;
+		}
 		connection->inUse++;
+		pthread_mutex_unlock(&(connection->lock));
+		
 		int tmp;
 		char c;
 		char buffer[BUFFER_LENGTH];
@@ -480,7 +524,11 @@ void dataHandler(int signo) {
 						connection->currentHeader = NULL;
 
 						debug("networking: headers complete");
+						
+						pthread_mutex_lock(&(connection->lock));
 						connection->state = PROCESSING;
+						pthread_mutex_unlock(&(connection->lock));
+						
 						updateTiming(connection, true);
 						startRequestHandler(connection);
 						break;
@@ -549,10 +597,15 @@ void dataHandler(int signo) {
 		
 			debug("networking: dropping connection");
 			setSIGIO(connection->readfd, false);
+			
+			pthread_mutex_lock(&(connection->lock));
 			connection->state = ABORTED;
+			pthread_mutex_unlock(&(connection->lock));
 		}
 
+		pthread_mutex_lock(&(connection->lock));
 		connection->inUse--;
+		pthread_mutex_unlock(&(connection->lock));
 	}
 }
 void* dataThread(void* ignore) {
@@ -746,6 +799,7 @@ void* listenThread(void* _bind) {
 			setSIGIO(tmp, true);
 		#endif
 
+		// lock doesn't yet exist
 		connection->state = OPENED;
 		connection->peer = peer;
 		connection->bind = bindObj;
@@ -773,6 +827,7 @@ void* listenThread(void* _bind) {
 		connection->currentHeaderLength = 0;
 		connection->currentHeader = NULL;
 		connection->inUse = 0;
+		pthread_mutex_init(&connection->lock, NULL);
 		updateTiming(connection, false);
 
 		linked_push(&connectionList, connection);

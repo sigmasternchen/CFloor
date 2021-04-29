@@ -117,8 +117,10 @@ void cleanup() {
 				ssl_closeConnection(connection->sslConnection);
 			#endif
 		
-			close(connection->readfd);
-			close(connection->writefd);
+			if (connection->readfd >= 0)
+				close(connection->readfd);
+			if (connection->writefd >= 0)
+				close(connection->writefd);
 
 			if (connection->metaData.path != NULL)
 				free(connection->metaData.path);
@@ -243,6 +245,8 @@ void safeEndConnection(struct connection* connection, bool force) {
 	// close socket
 	close(connection->readfd);
 	close(connection->writefd);
+	connection->readfd = -1;
+	connection->writefd = -1;
 
 	pthread_mutex_lock(&(connection->lock));
 	connection->state = CLOSED;
@@ -289,7 +293,13 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 	fprintf(stream, "\r\n");
 	fclose(stream);
 
-	return fd;
+	tmp = dup(fd);
+	if (tmp < 0) {
+		error("networking: sendHeader: dup: %s", strerror(errno));
+		return -1;
+	}
+
+	return tmp;
 }
 
 /*
@@ -338,6 +348,8 @@ void* requestThread(void* data) {
 	if (pthread_create(&(connection->threads.response), NULL, &responseThread, connection) < 0) {
 		close(connection->readfd);
 		close(connection->writefd);
+		connection->readfd = -1;
+		connection->writefd = -1;
 
 		error("networking: Couldn't start response thread.");
 		warn("networking: Aborting request.");
@@ -705,7 +717,7 @@ void* listenThread(void* _bind) {
 			connection->sslConnection = NULL;
 
 			connection->readfd = tmp;
-			connection->writefd = tmp;
+			connection->writefd = dup(tmp);
 
 			setNonBlocking(tmp, true);
 			setSIGIO(tmp, true);	

@@ -4,12 +4,11 @@
 #include <string.h>
 #include <errno.h>
 #include <stdarg.h>
-#include <sys/time.h>
-#include <time.h>
 #include <assert.h>
 #include <semaphore.h>
 
 #include "logging.h"
+#include "util.h"
 
 #ifdef BACKTRACE
 #include <execinfo.h>
@@ -87,50 +86,6 @@ void printBacktrace() {
 	fprintf(stderr, "Error: Not compiled with backtrace support.\n");
 
 	#endif
-}
-
-char* getTimestamp() {
-	#define MSEC_LENGTH (3)
-	#define TIME_LENGTH (4 + 1 + 2 + 1 + 2 + 1 + 2 + 1 + 2 + 1 + 2 + 1 + MSEC_LENGTH)
-	char* result = malloc(TIME_LENGTH + 1);
-	if (result == NULL) {
-		fprintf(stderr, "\nDEVASTATING: Couldn't malloc for log time.\n");
-		callCritical();
-		exit(EXIT_DEVASTATING);
-	}
-
-
-	int millisec;
-	struct tm* tm_info;
-	struct timeval tv;
-
-	gettimeofday(&tv, NULL);
-
-	millisec = (int) (tv.tv_usec / 1000.0);
-	if (millisec >= 1000) {
-		millisec -=1000;
-		tv.tv_sec++;
-	}
-
-	tm_info = localtime(&tv.tv_sec);
-
-	strftime(result, 26, "%Y-%m-%dT%H:%M:%S", tm_info);
-
-	char* msecBuffer = malloc(1 + MSEC_LENGTH + 1);
-
-	if (msecBuffer == NULL) {
-		fprintf(stderr, "\nDEVASTATING: Couldn't malloc for log time.\n");
-		callCritical();
-		exit(EXIT_DEVASTATING);
-	}
-
-	snprintf(msecBuffer, 1 + MSEC_LENGTH + 1, ".%03d", millisec);
-
-	strncat(result, msecBuffer, TIME_LENGTH + 1);
-
-	free(msecBuffer);
-
-	return result;
 }
 
 char* getLoglevelString(loglevel_t loglevel, bool color) {

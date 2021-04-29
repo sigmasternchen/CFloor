@@ -22,4 +22,6 @@ char* strclone(const char* string);
 
 int strlenOfNumber(long long number);
 
+char* getTimestamp();
+
 #endif

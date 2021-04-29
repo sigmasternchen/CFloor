@@ -25,6 +25,7 @@ typedef int loglevel_t;
 
 void setLogging(FILE* file, loglevel_t loglevel, bool color);
 void setCriticalHandler(void (*handler)());
+void callCritical();
 
 void printBacktrace();
 

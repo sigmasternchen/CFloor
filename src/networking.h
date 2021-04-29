@@ -35,12 +35,7 @@ typedef struct handler (*handlerGetter_t)(struct metaData metaData, const char* 
 struct threads {
 	pthread_t request;
 	pthread_t response;
-	pthread_t helper[2];
 	struct handler handler;
-	int requestFd;
-	int responseFd;
-	int _requestFd;
-	int _responseFd;
 };
 
 struct connection {

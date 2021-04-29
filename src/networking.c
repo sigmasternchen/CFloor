@@ -130,15 +130,6 @@ void cleanup() {
 				pthread_cancel(connection->threads.response);
 				pthread_join(connection->threads.response, NULL);
 			}
-			if (connection->threads.helper[0] != PTHREAD_NULL) {
-				pthread_cancel(connection->threads.helper[0]);
-				pthread_join(connection->threads.helper[0], NULL);
-			}
-			if (connection->threads.helper[1] != PTHREAD_NULL) {
-				pthread_cancel(connection->threads.helper[1]);
-				pthread_join(connection->threads.helper[1], NULL);
-			}
-
 			if (connection->peer.name != NULL)
 				free(connection->peer.name);
 
@@ -247,9 +238,8 @@ void safeEndConnection(struct connection* connection, bool force) {
 
 	stopThread(self, &(connection->threads.request), true);
 	stopThread(self, &(connection->threads.response), force);
-	stopThread(self, &(connection->threads.helper[0]), force);
-	stopThread(self, &(connection->threads.helper[1]), force);
 
+	// close socket
 	close(connection->readfd);
 	close(connection->writefd);
 
@@ -268,7 +258,7 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 	} 
 
 	struct connection* connection = (struct connection*) request->_private;
-	int fd = connection->threads.responseFd;
+	int fd = connection->writefd;
 	
 	FILE* stream = fdopen(dup(fd), "w");	
 	if (stream == NULL) {
@@ -283,7 +273,6 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 	fprintf(stream, "%s %d %s\r\n", protocolString(connection->metaData), statusCode, strings.statusString);
 
 	headers_dump(headers, stream);
-
 
 	fprintf(stream, "\r\n");
 	fclose(stream);
@@ -302,7 +291,7 @@ void* responseThread(void* data) {
 	connection->threads.handler.handler((struct request) {
 		.metaData = connection->metaData,
 		.headers = &(connection->headers),
-		.fd = connection->threads.requestFd,
+		.fd = connection->readfd,
 		.peer = connection->peer,
 		.userData = connection->threads.handler.data,
 		._private = connection 
@@ -313,18 +302,12 @@ void* responseThread(void* data) {
 	debug("networking: response handler returned");
 
 	safeEndConnection(connection, false);
-	
-	close(connection->threads.requestFd);
-	close(connection->threads._responseFd);
-
-	close(connection->threads._requestFd);
-	close(connection->threads.responseFd);
 
 	return NULL;
 }
 
 /*
- * This thread handles finding a handler and handles pipes
+ * This thread handles finding a handler and handler timeout
  */
 void* requestThread(void* data) {
 	struct connection* connection = (struct connection*) data;
@@ -340,80 +323,9 @@ void* requestThread(void* data) {
 
 	connection->threads.handler = handler;
 
-	int pipefd[2];
-	if (pipe(&(pipefd[0])) < 0) {
-		error("networking: Couldn't create reponse pipe: %s", strerror(errno));
-		warn("Aborting request.");
-		
-		pthread_mutex_lock(&(connection->lock));
-		connection->state = ABORTED;
-		connection->inUse--;
-		pthread_mutex_unlock(&(connection->lock));
-		
-		return NULL;
-	}
-
-	int request = pipefd[1];
-	connection->threads._requestFd = request;
-	connection->threads.requestFd = pipefd[0];
-	
-	if (pipe(&(pipefd[0])) < 0) {
-		close(request);
-		close(connection->threads.requestFd);
-
-		error("networking: Couldn't create reponse pipe: %s", strerror(errno));
-		warn("Aborting request.");
-		
-		pthread_mutex_lock(&(connection->lock));
-		connection->state = ABORTED;
-		connection->inUse--;
-		pthread_mutex_unlock(&(connection->lock));
-		
-		return NULL;
-	}
-
-	int response = pipefd[0];
-	connection->threads._responseFd = response;
-	connection->threads.responseFd = pipefd[1];
-
-	if (startCopyThread(connection->readfd, request, true, &(connection->threads.helper[0])) < 0) {
-		close(request);
-		close(connection->threads.requestFd);
-		close(response);
-		close(connection->threads.responseFd);
-		
-		error("networking: Couldn't start helper thread.");
-		warn("networking: Aborting request.");
-		
-		pthread_mutex_lock(&(connection->lock));
-		connection->state = ABORTED;
-		connection->inUse--;
-		pthread_mutex_unlock(&(connection->lock));
-		
-		return NULL;
-	}
-	if (startCopyThread(response, connection->writefd, false, &(connection->threads.helper[1])) < 0) {
-		close(request);
-		close(connection->threads.requestFd);
-		close(response);
-		close(connection->threads.responseFd);	
-	
-		error("networking: Couldn't start helper thread.");
-		warn("networking: Aborting request.");
-		
-		pthread_mutex_lock(&(connection->lock));
-		connection->state = ABORTED;
-		connection->inUse--;
-		pthread_mutex_unlock(&(connection->lock));
-		
-		return NULL;
-	}
-
 	if (pthread_create(&(connection->threads.response), NULL, &responseThread, connection) < 0) {
-		close(request);
-		close(connection->threads.requestFd);
-		close(response);
-		close(connection->threads.responseFd);
+		close(connection->readfd);
+		close(connection->writefd);
 
 		error("networking: Couldn't start response thread.");
 		warn("networking: Aborting request.");
@@ -433,10 +345,6 @@ void* requestThread(void* data) {
 	error("networking: Timeout of handler.");
 	error("networking: Aborting");
 
-	close(request);
-	close(connection->threads.requestFd);
-	close(response);
-	close(connection->threads.responseFd);
 	
 	safeEndConnection(connection, true);
 
@@ -816,14 +724,7 @@ void* listenThread(void* _bind) {
 			.request = PTHREAD_NULL,
 			.response = PTHREAD_NULL,
 			.handler = {},
-			.requestFd = -1,
-			.responseFd = -1,
-			._requestFd = -1,
-			._responseFd = -1
 		};
-		// TODO see above
-		connection->threads.helper[0] = PTHREAD_NULL;
-		connection->threads.helper[1] = PTHREAD_NULL;
 		connection->currentHeaderLength = 0;
 		connection->currentHeader = NULL;
 		connection->inUse = 0;

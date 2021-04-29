@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <pthread.h>
 
+#include <stdio.h>
+
 #include "linked.h"
 
 linkedList_t linked_create() {
@@ -228,12 +230,29 @@ void linked_destroy(linkedList_t* list) {
 
 	link_t* link = list->first;
 
+	link_t** first = &(list->first);
+	
 	while(link != NULL) {
 		pthread_mutex_lock(&(link->lock));
 		link_t* next = link->next;
-		// no new links can be added, so we can unlock link (next can't be changed)
-		pthread_mutex_unlock(&(link->lock));
-		linked_unlink(link);
+		
+		if (next != NULL) {
+			pthread_mutex_lock(&(next->lock));
+			*first = next;
+			next->prev = NULL;
+			pthread_mutex_unlock(&(next->lock));
+		}
+		
+		// no need to keep, we are going to clear the list anyway
+		link->next = NULL; 
+		link->unlinked = true;
+		
+		if (link->inUse == 0) {
+			linked_free(link);
+		} else {
+			pthread_mutex_unlock(&(link->lock));
+		}
+		
 		link = next;
 	}
 	

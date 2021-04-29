@@ -8,6 +8,7 @@
 #include <poll.h>
 #include <fcntl.h>
 #include <time.h>
+#include <pthread.h>
 
 #include "networking.h"
 #include "linked.h"
@@ -133,9 +134,25 @@ void testLinkedList() {
 
 	checkInt(linked_length(&list), 2, "list length");
 
+	if (pthread_mutex_trylock(&(list.lock)) != 0) {
+		checkBool(false, "list unlocked");
+	} else {
+		checkBool(true, "list unlocked");
+		pthread_mutex_unlock(&(list.lock));
+	}
+
 	link = list.first;
 	while(link != NULL) {
 		checkInt(link->inUse, 0, "raw inUse");
+		
+		if (pthread_mutex_trylock(&(link->lock)) != 0) {
+			checkBool(false, "raw unlocked");
+		} else {
+			checkBool(true, "raw unlocked");
+			pthread_mutex_unlock(&(link->lock));
+		}
+		
+		
 		link = link->next;
 	}
 
@@ -261,12 +278,12 @@ void testConfig() {
 	checkInt(config->binds[0]->nrSites, 1, "site no check");
 	checkInt(config->binds[0]->sites[0]->nrHostnames, 1, "site hostname no check");
 	checkString(config->binds[0]->sites[0]->hostnames[0], "example.com", "site hostname check");
-	checkString(config->binds[0]->sites[0]->documentRoot, "/var/www", "site document root check");
+	checkString(config->binds[0]->sites[0]->documentRoot, "/", "site document root check");
 	checkInt(config->binds[0]->sites[0]->nrHandlers, 1, "handler no check");
 	checkString(config->binds[0]->sites[0]->handlers[0]->dir, "/", "handler dir check");
 	checkInt(config->binds[0]->sites[0]->handlers[0]->type, FILE_HANDLER_NO, "handler type no check");
 	checkVoid(config->binds[0]->sites[0]->handlers[0]->handler, &fileHandler, "handler ptr check");
-	checkString(config->binds[0]->sites[0]->handlers[0]->settings.fileSettings.documentRoot, "/var/www", "handler settings root check");
+	checkString(config->binds[0]->sites[0]->handlers[0]->settings.fileSettings.documentRoot, "/", "handler settings root check");
 	checkInt(config->binds[0]->sites[0]->handlers[0]->settings.fileSettings.indexfiles.number, 1, "handler settings index no");
 	checkString(config->binds[0]->sites[0]->handlers[0]->settings.fileSettings.indexfiles.files[0], "index.html", "handler settings index check");
 	checkString(config->logging.accessLogfile, "access.log", "access log file check");
@@ -283,12 +300,12 @@ void testConfig() {
 		checkInt(config->binds[1]->nrSites, 1, "site no check");
 		checkInt(config->binds[1]->sites[0]->nrHostnames, 1, "site hostname no check");
 		checkString(config->binds[1]->sites[0]->hostnames[0], "example.com", "site hostname check");
-		checkString(config->binds[1]->sites[0]->documentRoot, "/var/www", "site document root check");
+		checkString(config->binds[1]->sites[0]->documentRoot, "/", "site document root check");
 		checkInt(config->binds[1]->sites[0]->nrHandlers, 1, "handler no check");
 		checkString(config->binds[1]->sites[0]->handlers[0]->dir, "/", "handler dir check");
 		checkInt(config->binds[1]->sites[0]->handlers[0]->type, FILE_HANDLER_NO, "handler type no check");
 		checkVoid(config->binds[1]->sites[0]->handlers[0]->handler, &fileHandler, "handler ptr check");
-		checkString(config->binds[1]->sites[0]->handlers[0]->settings.fileSettings.documentRoot, "/var/www", "handler settings root check");
+		checkString(config->binds[1]->sites[0]->handlers[0]->settings.fileSettings.documentRoot, "/", "handler settings root check");
 		checkInt(config->binds[1]->sites[0]->handlers[0]->settings.fileSettings.indexfiles.number, 1, "handler settings index no");
 		checkString(config->binds[1]->sites[0]->handlers[0]->settings.fileSettings.indexfiles.files[0], "index.html", "handler settings index check");
 	#endif

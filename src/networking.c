@@ -243,13 +243,15 @@ void safeEndConnection(struct connection* connection, bool force) {
 	stopThread(self, &(connection->threads.response), force);
 
 	// close socket
-	close(connection->readfd);
-	close(connection->writefd);
+	int tmp = connection->readfd;
 	connection->readfd = -1;
+	close(tmp);
+	tmp = connection->writefd;
 	connection->writefd = -1;
+	close(tmp);
 
 	pthread_mutex_lock(&(connection->lock));
-	connection->state = CLOSED;
+	//connection->state = CLOSED;
 	connection->inUse--;
 	pthread_mutex_unlock(&(connection->lock));
 }
@@ -346,10 +348,12 @@ void* requestThread(void* data) {
 	connection->threads.handler = handler;
 
 	if (pthread_create(&(connection->threads.response), NULL, &responseThread, connection) < 0) {
-		close(connection->readfd);
-		close(connection->writefd);
+		int tmp = connection->readfd;
 		connection->readfd = -1;
+		close(tmp);
+		tmp = connection->writefd;
 		connection->writefd = -1;
+		close(tmp);
 
 		error("networking: Couldn't start response thread.");
 		warn("networking: Aborting request.");
@@ -376,11 +380,6 @@ void* requestThread(void* data) {
 }
 
 void startRequestHandler(struct connection* connection) {
-
-	pthread_mutex_lock(&(connection->lock));
-	connection->inUse++;
-	pthread_mutex_unlock(&(connection->lock));
-
 	debug("networking: starting request handler");
 	if (pthread_create(&(connection->threads.request), NULL, &requestThread, connection) != 0) {
 		error("networking: Couldn't start request thread.");
@@ -398,6 +397,7 @@ void startRequestHandler(struct connection* connection) {
 #define BUFFER_LENGTH (64)
 
 pthread_t dataThreadId;
+
 void dataHandler(int signo) {
 	debug("networking: data handler got called.");
 
@@ -458,6 +458,7 @@ void dataHandler(int signo) {
 						
 						pthread_mutex_lock(&(connection->lock));
 						connection->state = PROCESSING;
+						connection->inUse++;
 						pthread_mutex_unlock(&(connection->lock));
 						
 						updateTiming(connection, true);
@@ -718,13 +719,25 @@ void* listenThread(void* _bind) {
 
 			connection->readfd = tmp;
 			connection->writefd = dup(tmp);
+			if (connection->writefd < 0) {
+				error("networking: listen: dup: %s", strerror(errno));
+				free(connection);
+				close(tmp);
+				continue;
+			}
 
 			setNonBlocking(tmp, true);
 			setSIGIO(tmp, true);	
 		}
 		#else 
 			connection->readfd = tmp;
-			connection->writefd = tmp;
+			connection->writefd = dup(tmp);
+			if (connection->writefd < 0) {
+				error("networking: listen: dup: %s", strerror(errno));
+				free(connection);
+				close(tmp);
+				continue;
+			}
 
 			setNonBlocking(tmp, true);
 			setSIGIO(tmp, true);

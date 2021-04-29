@@ -258,6 +258,10 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 	for(int i = 0; i < defaultHeaders.number; i++) {
 		headers_mod(headers, defaultHeaders.headers[i].key, defaultHeaders.headers[i].value);
 	} 
+	
+	// required by HTTP 1.1 if the connection is not kept open
+	// TODO implement persistent connections
+	headers_mod(headers, "Connection", "close");
 
 	struct connection* connection = (struct connection*) request->_private;
 	int fd = connection->writefd;

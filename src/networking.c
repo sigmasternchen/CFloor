@@ -245,6 +245,7 @@ void safeEndConnection(struct connection* connection, bool force) {
 	close(connection->writefd);
 
 	pthread_mutex_lock(&(connection->lock));
+	connection->state = CLOSED;
 	connection->inUse--;
 	pthread_mutex_unlock(&(connection->lock));
 }

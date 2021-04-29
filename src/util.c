@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <stdio.h>
-#include <sys/sendfile.h>
 #include <fcntl.h>
 
 #include <pthread.h>

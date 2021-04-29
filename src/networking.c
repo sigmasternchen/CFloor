@@ -103,10 +103,22 @@ void cleanup() {
 		
 			freed++;
 
+			if (connection->threads.request != PTHREAD_NULL) {
+				pthread_cancel(connection->threads.request);
+				pthread_join(connection->threads.request, NULL);
+			}
+			if (connection->threads.response != PTHREAD_NULL) {
+				pthread_cancel(connection->threads.response);
+				pthread_join(connection->threads.response, NULL);
+			}
+
 			#ifdef SSL_SUPPORT
 			if (connection->sslConnection != NULL)
 				ssl_closeConnection(connection->sslConnection);
 			#endif
+		
+			close(connection->readfd);
+			close(connection->writefd);
 
 			if (connection->metaData.path != NULL)
 				free(connection->metaData.path);
@@ -119,17 +131,6 @@ void cleanup() {
 
 			headers_free(&(connection->headers));
 
-			close(connection->readfd);
-			close(connection->writefd);
-
-			if (connection->threads.request != PTHREAD_NULL) {
-				pthread_cancel(connection->threads.request);
-				pthread_join(connection->threads.request, NULL);
-			}
-			if (connection->threads.response != PTHREAD_NULL) {
-				pthread_cancel(connection->threads.response);
-				pthread_join(connection->threads.response, NULL);
-			}
 			if (connection->peer.name != NULL)
 				free(connection->peer.name);
 
@@ -234,7 +235,7 @@ static inline void stopThread(pthread_t self, pthread_t* thread, bool force) {
 void safeEndConnection(struct connection* connection, bool force) {
 	pthread_t self = pthread_self();
 
-	debug("networking: safely shuting down the connection. %d", force);
+	debug("networking: safely shuting down the connection%s.", force ? " (forced)" : "");
 
 	stopThread(self, &(connection->threads.request), true);
 	stopThread(self, &(connection->threads.response), force);
@@ -260,9 +261,15 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 	struct connection* connection = (struct connection*) request->_private;
 	int fd = connection->writefd;
 	
-	FILE* stream = fdopen(dup(fd), "w");	
+	int tmp = dup(fd);
+	if (tmp < 0) {
+		error("networking: sendHeader: dup: %s", strerror(errno));
+		return -1;
+	}
+	
+	FILE* stream = fdopen(tmp, "w");	
 	if (stream == NULL) {
-		error("networking: Couldn't send header: %s", strerror(errno));
+		error("networking: sendHeader: fdopen: %s", strerror(errno));
 		return -1;
 	}
 
@@ -378,7 +385,6 @@ void dataHandler(int signo) {
 	debug("networking: data handler got called.");
 
 	for(link_t* link = linked_first(&connectionList); link != NULL; link = linked_next(link)) {
-		debug("networking: connection %p", link);
 		struct connection* connection = link->data;
 		
 		pthread_mutex_lock(&(connection->lock));

@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <stdio.h>
+#include <sys/sendfile.h>
+#include <fcntl.h>
 
 #include <pthread.h>
 
@@ -134,13 +136,40 @@ int startCopyThread(int from, int to, bool closeWriteFd, pthread_t* thread) {
 	return pthread_create(thread, NULL, &fileCopyThread, files);
 }
 
+#define FILE_COPY_BUFFER_SIZE (1024)
+
+size_t fileCopyThreadFallback(struct fileCopy* files) {
+
+	char c[FILE_COPY_BUFFER_SIZE];
+
+	size_t total = 0;
+	int tmp;
+	while((tmp = read(files->readFd, c, FILE_COPY_BUFFER_SIZE)) > 0) {
+		write(files->writeFd, c, tmp);
+		total += tmp;
+	}
+	
+	return total;
+}
+
 void* fileCopyThread(void* data) {
 	struct fileCopy* files = (struct fileCopy*) data;
-	char c;
 
-	while(read(files->readFd, &c, 1) > 0) {
-		write(files->writeFd, &c, 1);
+	errno = EACCES;
+	
+	size_t total = 0;
+	int tmp;
+	while((tmp = splice(files->readFd, NULL, files->writeFd, NULL, FILE_COPY_BUFFER_SIZE, 0)) > 0) {
+		total += tmp;
 	}
+
+	if (errno != EACCES) {
+		debug("util: splice: %s", strerror(errno));
+		debug("util: falling back to userland copy");
+		total = fileCopyThreadFallback(files);
+	}
+	
+	debug("util: filecopy: %d bytes copied", total);
 
 	if (files->closeWriteFd)
 		close(files->writeFd);

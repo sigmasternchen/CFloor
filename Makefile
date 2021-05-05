@@ -25,7 +25,7 @@ $(LIB_NAME): $(OBJS)
 	$(AR) $(ARFLAGS) $@ $^
 
 test: obj/test.o $(OBJS)
-	$(LD) $(LDFLAGS) -o $@ $^
+	$(LD) -o $@ $^ $(LDFLAGS)
 
 valgrind: CFLAGS += -static -g
 valgrind: clean test

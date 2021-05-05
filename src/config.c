@@ -295,7 +295,7 @@ struct config* config_parse(FILE* file) {
 						state = SSL_KEY_VALUE;
 						break;
 					case SSL_KEY_VALUE: ;
-						tmp = strclone(currentToken);
+						tmp = strdup(currentToken);
 						if (tmp == NULL) {
 							error("config: error cloning ssl key string");
 							freeEverything(toFree, toFreeLength);
@@ -316,7 +316,7 @@ struct config* config_parse(FILE* file) {
 						state = SSL_CERT_VALUE;
 						break;
 					case SSL_CERT_VALUE: ;
-						tmp = strclone(currentToken);
+						tmp = strdup(currentToken);
 						if (tmp == NULL) {
 							error("config: error cloning ssl cert string");
 							freeEverything(toFree, toFreeLength);

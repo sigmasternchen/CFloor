@@ -9,12 +9,12 @@ on:
 jobs:
   test:
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
 
     steps:
     - uses: actions/checkout@v2
     - name: install deps
-      run: apt update && apt install libpthread-stubs0-dev libc6
+      run: sudo apt update && sudo apt install libpthread-stubs0-dev libc6
     - name: make test
       run: make test
     - name: run tests

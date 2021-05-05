@@ -1,4 +1,7 @@
 # CFloor
+
+[![Test Suite](https://github.com/overflowerror/CFloor/actions/workflows/test-suite.yml/badge.svg)](https://github.com/overflowerror/CFloor/actions/workflows/test-suite.yml)
+
 ## A minimal event-based webserver written in C
 
 The title already says everything.

@@ -1,4 +1,4 @@
-name: C/C++ CI
+name: Test Suite
 
 on:
   push:
@@ -9,12 +9,10 @@ on:
 jobs:
   test:
 
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v2
-    - name: install deps
-      run: sudo apt update && sudo apt install libpthread-stubs0-dev libc6
     - name: make test
       run: make test
     - name: run tests

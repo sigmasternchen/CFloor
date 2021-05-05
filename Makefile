@@ -1,7 +1,7 @@
 CC       = gcc
 CFLAGS   = -std=c99 -Wall -D_POSIX_C_SOURCE=201112L -D_XOPEN_SOURCE=500 -D_GNU_SOURCE -static -g
 LD       = gcc
-LDFLAGS  = -lpthread -lrt
+LDFLAGS  = -pthread -lrt
 AR       = ar
 ARFLAGS  = rcs
 

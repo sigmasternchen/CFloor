@@ -166,9 +166,9 @@ struct config* config_parse(FILE* file) {
 
 					char* host;
 					if (strcmp(currentToken, "*") == 0)
-						host = strclone("0.0.0.0");
+						host = strdup("0.0.0.0");
 					else
-						host = strclone(currentToken);
+						host = strdup(currentToken);
 
 					if (host == NULL) {
 						error("config: error cloning host string");
@@ -177,7 +177,7 @@ struct config* config_parse(FILE* file) {
 					}
 					replaceOrAdd(toFree, &toFreeLength, NULL, host);
 
-					char* port = strclone(seperator + 1);
+					char* port = strdup(seperator + 1);
 					if (port == NULL) {
 						error("config: error cloning port string");
 						freeEverything(toFree, toFreeLength);
@@ -397,7 +397,7 @@ struct config* config_parse(FILE* file) {
 					replaceOrAdd(toFree, &toFreeLength, currentSite->hostnames, tmpArray);
 					currentSite->hostnames = tmpArray;
 					
-					tmp = strclone(currentToken);
+					tmp = strdup(currentToken);
 					if (tmp == NULL) {
 						error("config: error cloning hostname string");
 						freeEverything(toFree, toFreeLength);
@@ -431,7 +431,7 @@ struct config* config_parse(FILE* file) {
 					state = SITE_CONTENT;
 					break;
 				case HANDLER_VALUE:
-					currentHandler->dir = strclone(currentToken);
+					currentHandler->dir = strdup(currentToken);
 					if (currentHandler->dir == NULL) {
 						error("config: error cloning handle directory string");
 						freeEverything(toFree, toFreeLength);
@@ -509,7 +509,7 @@ struct config* config_parse(FILE* file) {
 					replaceOrAdd(toFree, &toFreeLength, settings->indexfiles.files, tmpArray);
 					settings->indexfiles.files = tmpArray;
 
-					tmp = strclone(currentToken);
+					tmp = strdup(currentToken);
 					if (tmp == NULL) {
 						error("config: error cloning hostname string");
 						freeEverything(toFree, toFreeLength);
@@ -554,7 +554,7 @@ struct config* config_parse(FILE* file) {
 					state = LOGGING_ACCESS_FILE_VALUE;
 					break;
 				case LOGGING_ACCESS_FILE_VALUE:
-					config->logging.accessLogfile = strclone(currentToken);
+					config->logging.accessLogfile = strdup(currentToken);
 					if (config->logging.accessLogfile == NULL) {
 						error("config: error cloning access log file string");
 						freeEverything(toFree, toFreeLength);
@@ -572,7 +572,7 @@ struct config* config_parse(FILE* file) {
 					state = LOGGING_SERVER_FILE_VALUE;
 					break;
 				case LOGGING_SERVER_FILE_VALUE:
-					config->logging.serverLogfile = strclone(currentToken);
+					config->logging.serverLogfile = strdup(currentToken);
 					if (config->logging.serverLogfile == NULL) {
 						error("config: error cloning server log file string");
 						freeEverything(toFree, toFreeLength);

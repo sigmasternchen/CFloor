@@ -53,10 +53,7 @@ void showError() {
 
 void testUtil() {
 	const char* original = "Hello World";
-	char* clone = strclone(original);
-
-	checkNull(clone, "clone: null check");
-	checkString(clone, original, "clone: value check");
+	char* clone = strdup(original);
 
 	strremove(clone, 4, 1);
 	checkString(clone, "Hell World", "remove: middle");

@@ -46,12 +46,12 @@ int headers_remove(struct headers* headers, const char* key) {
 }
 
 int headers_mod(struct headers* headers, const char* _key, const char* _value) {
-	char* tmp = strclone(_key);
+	char* tmp = strdup(_key);
 	if (tmp == NULL) {
 		return HEADERS_ALLOC_ERROR;
 	}
 	char* key = tmp;
-	tmp = strclone(_value);
+	tmp = strdup(_value);
 	if (tmp == NULL) {
 		return HEADERS_ALLOC_ERROR;
 	}

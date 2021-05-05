@@ -683,13 +683,20 @@ void* listenThread(void* _bind) {
 
 		gethostbyaddr_r(&client, sizeof(client), family, &entry, &(buffer[0]), LOCAL_BUFFER_SIZE, &result, &h_errno);
 		if (result == NULL) {
-			peer.name = strclone("");
+			peer.name = strdup("");
 		} else {
-			peer.name = strclone(entry.h_name);
+			peer.name = strdup(entry.h_name);
 			if (peer.name == NULL) {
-				error("networking: Couldn't strclone hostname: %s", strerror(errno));
-				peer.name = strclone("");
+				error("networking: Couldn't strdup hostname: %s", strerror(errno));
+				peer.name = strdup("");
 			}
+		}
+		
+		if (peer.name == NULL) {
+			close(tmp);
+			free(connection);
+			error("networking: bad: strdup on empty string: %s", strerror(errno));
+			continue;
 		}
 
 		snprintf(&(peer.portStr[0]), 5 + 1, "%d", peer.port);

@@ -180,14 +180,6 @@ void* fileCopyThread(void* data) {
 	return NULL;
 }
 
-char* strclone(const char* string) {
-	char* result = malloc(strlen(string) + 1);
-	if (result == NULL)
-		return NULL;
-	strcpy(result, string);
-	return result;
-}
-
 int strlenOfNumber(long long number) {
 	int result = 1;
 

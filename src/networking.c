@@ -71,9 +71,14 @@ void cleanup() {
 		long diffms = timespacAgeMs(connection->timing.lastUpdate);
 
 		pthread_mutex_lock(&(connection->lock));
-		if (connection->state != OPENED) {
+		if (connection->state == KEEP_ALIVE) {
+			// KEEP_ALIVE means that the connection is persistent but there is an active handler
+			// don't unlink; don't abort connection
+		} else if (connection->state != OPENED) {
 			unlink = true;
 		} else if (diffms > networkingConfig.connectionTimeout) {
+			// the connection is open too long without data from the client
+			// TODO: add custom timeout if connection isPersistent
 			connection->state = ABORTED;
 		}
 		pthread_mutex_unlock(&(connection->lock));
@@ -111,6 +116,44 @@ void cleanup() {
 				pthread_cancel(connection->threads.response);
 				pthread_join(connection->threads.response, NULL);
 			}
+
+			if (connection->state == ABORTED && connection->writefd >= 0) {
+				// either the client took too long to send the headers
+				// or this connection was persistent and the client didn't produce a request
+				// either way: since the writefd is still available 
+				//             let's send a 408 status before closing the connection
+				
+				int dupfd = dup(connection->writefd);
+				if (dupfd < 0) {
+					error("networking: couldn't dup fd for 408 handling: %s", strerror(errno));
+					goto CONTINUE_CLEANUP;
+				}
+				FILE* stream = fdopen(dupfd, "w");
+				if (stream == NULL) {
+					error("networking: couldn't create FILE for 408 handling: %s", strerror(errno));
+					close(dupfd);
+					goto CONTINUE_CLEANUP;
+				}
+				
+				struct headers headers = headers_create();
+				for(int i = 0; i < networkingConfig.defaultHeaders.number; i++) {
+					headers_mod(&headers, networkingConfig.defaultHeaders.headers[i].key, networkingConfig.defaultHeaders.headers[i].value);
+				} 
+				
+				// set connection close header as required by the standard
+				headers_mod(&headers, "Connection", "close");
+				// no content
+				headers_mod(&headers, "Content-Length", "0");
+				
+				fprintf(stream, "%s %d %s\r\n", protocolString(connection->metaData), 408, getStatusStrings(408).statusString);
+
+				headers_dump(&headers, stream);
+				headers_free(&headers);
+
+				fprintf(stream, "\r\n");
+				fclose(stream); // will close dup as well
+			}
+			CONTINUE_CLEANUP:
 
 			#ifdef SSL_SUPPORT
 			if (connection->sslConnection != NULL)
@@ -466,6 +509,7 @@ void dataHandler(int signo) {
 		struct connection* connection = link->data;
 		
 		pthread_mutex_lock(&(connection->lock));
+		// we don't support pipelining, current request has to be finished for the next to start
 		if (connection->state != OPENED) {
 			pthread_mutex_unlock(&(connection->lock));
 			continue;
@@ -517,8 +561,22 @@ void dataHandler(int signo) {
 
 						debug("networking: headers complete");
 						
+						connection->isPersistent = true;	
+						const char* connectionHeader = headers_get(&(connection->headers), "Connection");
+						if (connectionHeader == NULL) {
+							// assume keep alive
+							connection->isPersistent = true;
+						} else if (strcasecmp(connectionHeader, "close")) {
+							connection->isPersistent = false;
+						} else if (strcasecmp(connectionHeader, "keep-alive")) {
+							connection->isPersistent = true;
+						}
+						
 						pthread_mutex_lock(&(connection->lock));
-						connection->state = PROCESSING;
+						if (connection->isPersistent) {
+						} else {
+							connection->state = PROCESSING;
+						}
 						connection->inUse++;
 						pthread_mutex_unlock(&(connection->lock));
 						

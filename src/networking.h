@@ -19,10 +19,11 @@
 #define NR_CONNECTION_STATE (5)
 enum connectionState {
 	OPENED = 0,
-	PROCESSING = 1, 
-	ABORTED = 2, 
-	CLOSED = 3, 
-	FREED = 4
+	PROCESSING = 1,
+	KEEP_ALIVE = 2,
+	ABORTED = 3, 
+	CLOSED = 4, 
+	FREED = 5
 };
 
 struct timing {
@@ -52,6 +53,7 @@ struct connection {
 	char* currentHeader;
 	struct timing timing;
 	struct threads threads;
+	bool isPersistent;
 	#ifdef SSL_SUPPORT
 	struct ssl_connection* sslConnection;
 	#endif

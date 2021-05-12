@@ -116,6 +116,11 @@ void cleanup() {
 				pthread_cancel(connection->threads.response);
 				pthread_join(connection->threads.response, NULL);
 			}
+			if (connection->threads.encoder != PTHREAD_NULL) {
+				pthread_cancel(connection->threads.encoder);
+				pthread_join(connection->threads.encoder, NULL);
+			}
+
 
 			if (connection->state == ABORTED && connection->writefd >= 0) {
 				// either the client took too long to send the headers
@@ -353,15 +358,57 @@ void* chunkedTransferEncodingThread(void* _data) {
 		error("networking: error reading from chunked input: %s", strerror(errno));
 	}
 	
+	close(data->readfd);
 	fclose(writeFile); // close dup, fd will stay open
-	
 	free(data);
 	
 	return NULL;
 }
 
+void minimalErrorResponse(struct headers* headers, struct connection* connection) {
+
+	// fix headers
+	headers_remove(headers, "Content-Encoding");
+	headers_mod(headers, "Connection", "close");
+	headers_mod(headers, "Content-Length", 0);
+	
+	FILE* stream = fdopen(connection->writefd, "w");
+	if (stream == NULL) {
+		// all is lost
+		error("networking: this is fine... %s", strerror(errno));
+		
+		pthread_mutex_lock(&(connection->lock));
+		
+		// invalidate socket fd and close
+		int tmp = connection->writefd;
+		connection->writefd = -1;
+		close(tmp);
+	} else {
+		fprintf(stream, "%s %d %s\r\n", protocolString(connection->metaData), 500, getStatusStrings(500).statusString);
+		headers_dump(headers, stream);
+		fprintf(stream, "\r\n");
+		
+		pthread_mutex_lock(&(connection->lock));
+		
+		// invalidate socket fd before closing
+		connection->writefd = -1;
+		fclose(stream);
+	}
+
+	if (connection->isPersistent) {
+		// this conenction is persistent
+		// => set this connection to non-persistent and close it.
+		connection->state = PROCESSING;
+		connection->isPersistent = false;
+	}
+	
+	pthread_mutex_unlock(&(connection->lock));
+}
+
 int sendHeader(int statusCode, struct headers* headers, struct request* request) {
 	debug("networking: sending headers");
+	
+	struct connection* connection = (struct connection*) request->_private;
 
 	struct headers defaultHeaders = networkingConfig.defaultHeaders;
 
@@ -369,22 +416,79 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 		headers_mod(headers, defaultHeaders.headers[i].key, defaultHeaders.headers[i].value);
 	} 
 	
-	// required by HTTP 1.1 if the connection is not kept open
-	// TODO implement persistent connections
-	headers_mod(headers, "Connection", "close");
-
-	struct connection* connection = (struct connection*) request->_private;
+	bool chunkedTransferEncoding = false;
+	
+	if (connection->isPersistent) {
+		headers_mod(headers, "Connection", "keep-alive");
+		
+		if (headers_get(headers, "Content-Length") == NULL) {
+			headers_mod(headers, "Transfer-Encoding", "chunked");
+			chunkedTransferEncoding = true;
+		}
+	} else {
+		headers_mod(headers, "Connection", "close");
+	}
+	
+	// fd will be the fd to be returned to the caller
 	int fd = connection->writefd;
 	
+	// tmp is for sending headers
 	int tmp = dup(fd);
 	if (tmp < 0) {
 		error("networking: sendHeader: dup: %s", strerror(errno));
+		minimalErrorResponse(headers, connection);
 		return -1;
+	}
+	
+	if (chunkedTransferEncoding) {
+		int pipefd[2];
+		
+		if (pipe(pipefd) < 0) {
+			close(tmp);
+			error("networking: couldn't create pipe for encoding: %s", strerror(errno));
+			minimalErrorResponse(headers, connection);
+			return -1;
+		}
+	
+		struct chunkedEncodingData* data = malloc(sizeof(struct chunkedEncodingData));
+		if (data == NULL) {
+			close(tmp);
+			close(pipefd[0]);
+			close(pipefd[1]);
+			error("networking: encoding data: malloc: %s", strerror(errno));
+			minimalErrorResponse(headers, connection);
+			return -1;
+		}
+	
+		data->connection = connection;
+		data->readfd = pipefd[0];
+		fd = pipefd[1];
+	
+		// start encoding thread
+		if (pthread_create(&(connection->threads.encoder), NULL, &chunkedTransferEncodingThread, data) < 0) {
+			close(tmp);
+			close(pipefd[0]);
+			close(pipefd[1]);
+			free(data);
+		
+			error("networking: Couldn't start encoding thread.");
+			minimalErrorResponse(headers, connection);
+			return -1;
+		}
+	} else {
+		fd = dup(fd);
+		if (fd < 0) {
+			close(tmp);
+			error("networking: sendHeader: dup: %s", strerror(errno));
+			minimalErrorResponse(headers, connection);
+			return -1;
+		}
 	}
 	
 	FILE* stream = fdopen(tmp, "w");	
 	if (stream == NULL) {
 		error("networking: sendHeader: fdopen: %s", strerror(errno));
+		minimalErrorResponse(headers, connection);
 		return -1;
 	}
 
@@ -399,13 +503,7 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 	fprintf(stream, "\r\n");
 	fclose(stream);
 
-	tmp = dup(fd);
-	if (tmp < 0) {
-		error("networking: sendHeader: dup: %s", strerror(errno));
-		return -1;
-	}
-
-	return tmp;
+	return fd;
 }
 
 /*
@@ -885,6 +983,7 @@ void* listenThread(void* _bind) {
 			 */
 			.request = PTHREAD_NULL,
 			.response = PTHREAD_NULL,
+			.encoder = PTHREAD_NULL,
 			.handler = {},
 		};
 		connection->currentHeaderLength = 0;

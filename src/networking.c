@@ -527,8 +527,55 @@ void* responseThread(void* data) {
 	
 	debug("networking: response handler returned");
 
-	safeEndConnection(connection, false);
+	// lock before isPersistent check in case the connection gets aborted
+	pthread_mutex_lock(&(connection->lock));
+	if (connection->isPersistent) {
+		
+		pthread_t self = pthread_self();
+		
+		// kill request thread so that the connection doesn't get killed
+		stopThread(self, &(connection->threads.request), true);
+		connection->threads.request = PTHREAD_NULL;
+		
+		// wait for encoder
+		if (connection->threads.encoder != PTHREAD_NULL) {
+			stopThread(self, &(connection->threads.encoder), false);
+			connection->threads.encoder = PTHREAD_NULL;
+		}
+		
+		// free request specific data
+		if (connection->metaData.path != NULL) {
+			free(connection->metaData.path);
+			connection->metaData.path = NULL;
+		}
+		if (connection->metaData.queryString != NULL) {
+			free(connection->metaData.queryString);
+			connection->metaData.queryString = NULL;
+		}
+		if (connection->metaData.uri != NULL) {
+			free(connection->metaData.uri);
+			connection->metaData.uri = NULL;
+		}
+		if (connection->currentHeader != NULL) {
+			free(connection->currentHeader);
+			connection->currentHeader = NULL;
+		}
+		
+		connection->currentHeaderLength = 0;
 
+		headers_free(&(connection->headers));
+		
+		// set state to OPENED so a request can be read
+		connection->state = OPENED;
+		updateTiming(connection, true);
+		connection->inUse--;
+		pthread_mutex_unlock(&(connection->lock));
+	} else {
+		// unlock before safeEndConnection
+		pthread_mutex_unlock(&(connection->lock));
+		safeEndConnection(connection, false);
+	}
+	
 	return NULL;
 }
 
@@ -662,8 +709,13 @@ void dataHandler(int signo) {
 						connection->isPersistent = true;	
 						const char* connectionHeader = headers_get(&(connection->headers), "Connection");
 						if (connectionHeader == NULL) {
-							// assume keep alive
-							connection->isPersistent = true;
+							if (connection->metaData.protocol == HTTP10) {
+								// in HTTP 1.0 does not have persistent connections by default
+								connection->isPersistent = false;
+							} else {
+								// HTTP 1.1 uses persistent connections unless specified otherwise
+								connection->isPersistent = true;
+							}
 						} else if (strcasecmp(connectionHeader, "close")) {
 							connection->isPersistent = false;
 						} else if (strcasecmp(connectionHeader, "keep-alive")) {
@@ -672,6 +724,7 @@ void dataHandler(int signo) {
 						
 						pthread_mutex_lock(&(connection->lock));
 						if (connection->isPersistent) {
+							connection->state = KEEP_ALIVE;
 						} else {
 							connection->state = PROCESSING;
 						}
@@ -727,7 +780,7 @@ void dataHandler(int signo) {
 					break;
 			}
 		} else if (tmp == 0) {
-			error("networking: connection ended");
+			debug("networking: connection ended");
 
 			buffer[length] = '\0';
 			debug("networking: buffer: '%s'", buffer);

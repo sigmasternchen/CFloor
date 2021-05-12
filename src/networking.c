@@ -506,31 +506,7 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 	return fd;
 }
 
-/*
- * This thread calls the handler.
- */
-void* responseThread(void* data) {
-	struct connection* connection = (struct connection*) data;
-
-	debug("networking: calling response handler");
-
-	connection->threads.handler.handler((struct request) {
-		.metaData = connection->metaData,
-		.headers = &(connection->headers),
-		.fd = connection->readfd,
-		.peer = connection->peer,
-		.userData = connection->threads.handler.data,
-		._private = connection 
-	}, (struct response) {
-		.sendHeader = sendHeader
-	});
-	
-	debug("networking: response handler returned");
-
-	// lock before isPersistent check in case the connection gets aborted
-	pthread_mutex_lock(&(connection->lock));
-	if (connection->isPersistent) {
-		
+void resetPersistentConnection(struct connection* connection) {
 		pthread_t self = pthread_self();
 		
 		// kill request thread so that the connection doesn't get killed
@@ -569,6 +545,34 @@ void* responseThread(void* data) {
 		connection->state = OPENED;
 		updateTiming(connection, true);
 		connection->inUse--;
+}
+
+/*
+ * This thread calls the handler.
+ */
+void* responseThread(void* data) {
+	struct connection* connection = (struct connection*) data;
+
+	debug("networking: calling response handler");
+
+	connection->threads.handler.handler((struct request) {
+		.metaData = connection->metaData,
+		.headers = &(connection->headers),
+		.fd = connection->readfd,
+		.peer = connection->peer,
+		.userData = connection->threads.handler.data,
+		._private = connection 
+	}, (struct response) {
+		.sendHeader = sendHeader
+	});
+	
+	debug("networking: response handler returned");
+
+	// lock before isPersistent check in case the connection gets aborted
+	pthread_mutex_lock(&(connection->lock));
+	if (connection->isPersistent) {
+		resetPersistentConnection(connection);
+		// unlock after reset
 		pthread_mutex_unlock(&(connection->lock));
 	} else {
 		// unlock before safeEndConnection

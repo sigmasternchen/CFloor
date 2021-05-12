@@ -305,6 +305,61 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 }
 
 /*
+ * This thread handles chunked transfer encoding for persistent connections
+ */
+void* chunkedTransferEncodingThread(void* data) {
+	#define ENCODING_MAX_CHUNK_SIZE (512)
+
+	struct fileCopy* files = (struct fileCopy*) data;
+	// files->closeWriteFd is not be closed
+	// except on error
+	
+	int dupFd = dup(files->writeFd);
+	if (dupFd < 0) {
+		error("networking: couldn't dup for chunked encoding");
+		close(files->writeFd);
+	}
+	FILE* writeFile = fdopen(dupFd, "w");
+	if (writeFile == NULL) {
+		error("networking: couldn't open FILE stream for chunked encoding");
+		close(dupFd);
+		close(files->writeFd);
+		return NULL;
+	}
+	
+	debug("networking: chunked transfer encoding: using max chunk size of %lld", ENCODING_MAX_CHUNK_SIZE);
+	
+	char c[ENCODING_MAX_CHUNK_SIZE];
+
+	size_t total = 0;
+	size_t chunks = 0;
+	int tmp;
+	while((tmp = read(files->readFd, c, ENCODING_MAX_CHUNK_SIZE)) > 0) {
+		fprintf(writeFile, "%x\r\n", tmp);
+		fwrite(c, sizeof(char), tmp, writeFile);
+		fputs("\r\n", writeFile);
+		total += tmp;
+		chunks++;
+	}
+	
+	debug("networking: chunked transfer encoding: %lld bytes send in %lld chunks", total, chunks);
+	
+	if (0 == tmp) {
+		// send last chunk flag
+		fputs("0\r\n\r\n", writeFile);
+		fclose(writeFile); // close dup, socket will stay open
+	} else {
+		error("networking: error reading from chunked input: %s", strerror(errno));
+		fclose(writeFile); // close dup, fd will stay open
+		close(files->writeFd); // close socket
+	}
+	
+	free(files);
+	
+	return NULL;
+}
+
+/*
  * This thread calls the handler.
  */
 void* responseThread(void* data) {

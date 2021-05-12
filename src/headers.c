@@ -165,8 +165,10 @@ void headers_free(struct headers* headers) {
 			free(headers->headers[i].value);
 	}
 	
-	if (headers->headers != NULL)
+	if (headers->headers != NULL) {
 		free(headers->headers);
+		headers->headers = NULL;
+	}
 
 	headers->number = 0;
 }

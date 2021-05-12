@@ -45,6 +45,7 @@ struct connection {
 	struct peer peer;
 	struct bind* bind;
 	pthread_mutex_t lock;
+	pthread_mutex_t resetOkay;
 	volatile sig_atomic_t inUse;
 	int readfd;
 	int writefd;
@@ -55,6 +56,7 @@ struct connection {
 	struct timing timing;
 	struct threads threads;
 	bool isPersistent;
+	bool isChunked;
 	#ifdef SSL_SUPPORT
 	struct ssl_connection* sslConnection;
 	#endif

@@ -304,6 +304,57 @@ void safeEndConnection(struct connection* connection, bool force) {
 	pthread_mutex_unlock(&(connection->lock));
 }
 
+// connection has to be locked beforehand
+// TODO: Look into how self can be joined
+// (because this function will be called in response or encoder thread)
+void resetPersistentConnection(struct connection* connection) {
+		pthread_t self = pthread_self();
+		
+		// kill request thread so that the connection doesn't get killed
+		stopThread(self, &(connection->threads.request), true);
+				
+		// if we are the encoding thread, 
+		// wait for response thread to terminate (should have happend already)
+		//
+		// if caller is response thread stopThread will do nothing
+		stopThread(self, &(connection->threads.response), false);
+		
+		// wait for encoder
+		if (connection->threads.encoder != PTHREAD_NULL) {
+			// if caller is encoder stopThread will to nothing
+			debug("stopping encoder thread");
+			stopThread(self, &(connection->threads.encoder), false);
+			debug("stopped encoder thread");
+		}
+		
+		// free request specific data
+		if (connection->metaData.path != NULL) {
+			free(connection->metaData.path);
+			connection->metaData.path = NULL;
+		}
+		if (connection->metaData.queryString != NULL) {
+			free(connection->metaData.queryString);
+			connection->metaData.queryString = NULL;
+		}
+		if (connection->metaData.uri != NULL) {
+			free(connection->metaData.uri);
+			connection->metaData.uri = NULL;
+		}
+		if (connection->currentHeader != NULL) {
+			free(connection->currentHeader);
+			connection->currentHeader = NULL;
+		}
+		
+		connection->currentHeaderLength = 0;
+
+		headers_free(&(connection->headers));
+		
+		// set state to OPENED so a request can be read
+		connection->state = OPENED;
+		updateTiming(connection, true);
+		connection->inUse--;
+}
+
 struct chunkedEncodingData {
 	struct connection* connection;
 	int readfd;
@@ -360,6 +411,16 @@ void* chunkedTransferEncodingThread(void* _data) {
 	
 	close(data->readfd);
 	fclose(writeFile); // close dup, fd will stay open
+	
+	pthread_mutex_lock(&(data->connection->resetOkay));
+	// once we have the lock we can destroy it
+	pthread_mutex_unlock(&(data->connection->resetOkay));
+	pthread_mutex_destroy(&(data->connection->resetOkay));
+	
+	pthread_mutex_lock(&(data->connection->lock));
+	resetPersistentConnection(data->connection);
+	pthread_mutex_unlock(&(data->connection->lock));
+	
 	free(data);
 	
 	return NULL;
@@ -485,6 +546,8 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 		}
 	}
 	
+	connection->isChunked = chunkedTransferEncoding;
+	
 	FILE* stream = fdopen(tmp, "w");	
 	if (stream == NULL) {
 		error("networking: sendHeader: fdopen: %s", strerror(errno));
@@ -506,47 +569,6 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 	return fd;
 }
 
-void resetPersistentConnection(struct connection* connection) {
-		pthread_t self = pthread_self();
-		
-		// kill request thread so that the connection doesn't get killed
-		stopThread(self, &(connection->threads.request), true);
-		connection->threads.request = PTHREAD_NULL;
-		
-		// wait for encoder
-		if (connection->threads.encoder != PTHREAD_NULL) {
-			stopThread(self, &(connection->threads.encoder), false);
-			connection->threads.encoder = PTHREAD_NULL;
-		}
-		
-		// free request specific data
-		if (connection->metaData.path != NULL) {
-			free(connection->metaData.path);
-			connection->metaData.path = NULL;
-		}
-		if (connection->metaData.queryString != NULL) {
-			free(connection->metaData.queryString);
-			connection->metaData.queryString = NULL;
-		}
-		if (connection->metaData.uri != NULL) {
-			free(connection->metaData.uri);
-			connection->metaData.uri = NULL;
-		}
-		if (connection->currentHeader != NULL) {
-			free(connection->currentHeader);
-			connection->currentHeader = NULL;
-		}
-		
-		connection->currentHeaderLength = 0;
-
-		headers_free(&(connection->headers));
-		
-		// set state to OPENED so a request can be read
-		connection->state = OPENED;
-		updateTiming(connection, true);
-		connection->inUse--;
-}
-
 /*
  * This thread calls the handler.
  */
@@ -554,6 +576,11 @@ void* responseThread(void* data) {
 	struct connection* connection = (struct connection*) data;
 
 	debug("networking: calling response handler");
+
+	if (connection->isPersistent) {
+		pthread_mutex_init(&connection->resetOkay, NULL);
+		pthread_mutex_lock(&(connection->resetOkay));
+	}
 
 	connection->threads.handler.handler((struct request) {
 		.metaData = connection->metaData,
@@ -571,7 +598,14 @@ void* responseThread(void* data) {
 	// lock before isPersistent check in case the connection gets aborted
 	pthread_mutex_lock(&(connection->lock));
 	if (connection->isPersistent) {
-		resetPersistentConnection(connection);
+		if (!connection->isChunked) {
+			pthread_mutex_unlock(&(connection->resetOkay));
+			pthread_mutex_destroy(&(connection->resetOkay));
+			
+			resetPersistentConnection(connection);
+		} else {
+			pthread_mutex_unlock(&(connection->resetOkay));
+		}
 		// unlock after reset
 		pthread_mutex_unlock(&(connection->lock));
 	} else {

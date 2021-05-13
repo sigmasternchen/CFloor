@@ -690,6 +690,8 @@ void startRequestHandler(struct connection* connection) {
 pthread_t dataThreadId;
 
 void dataHandler(int signo) {
+	pthread_t self = pthread_self();
+
 	debug("networking: data handler got called.");
 
 	for(link_t* link = linked_first(&connectionList); link != NULL; link = linked_next(link)) {
@@ -703,6 +705,15 @@ void dataHandler(int signo) {
 		}
 		connection->inUse++;
 		pthread_mutex_unlock(&(connection->lock));
+		
+		// if the connection is persistent there could be still
+		// unjoined threads -> join them
+		if (connection->threads.response != PTHREAD_NULL) {
+			stopThread(self, &(connection->threads.response), false);
+		}
+		if (connection->threads.encoder != PTHREAD_NULL) {
+			stopThread(self, &(connection->threads.encoder), false);
+		}
 		
 		int tmp;
 		char c;

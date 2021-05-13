@@ -353,6 +353,10 @@ void resetPersistentConnection(struct connection* connection) {
 		connection->state = OPENED;
 		updateTiming(connection, true);
 		connection->inUse--;
+		
+		// possibly the client sent pipelined requests
+		// trigger sigio on data thread just in case
+		kill(getpid(), SIGIO);
 }
 
 struct chunkedEncodingData {

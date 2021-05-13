@@ -305,8 +305,6 @@ void safeEndConnection(struct connection* connection, bool force) {
 }
 
 // connection has to be locked beforehand
-// TODO: Look into how self can be joined
-// (because this function will be called in response or encoder thread)
 void resetPersistentConnection(struct connection* connection) {
 		debug("networking: resetting persistent connection to initial state");
 
@@ -824,28 +822,33 @@ void dataHandler(int signo) {
 			buffer[length++] = c;
 			last = c;
 		}
+		
+		if (!dropConnection) {
+			// only check read return value (tmp) if the connection shouldn't be dropped
+			// because tmp might be set before a break
+		
+			if (tmp < 0) {
+				switch(errno) {
+					case EAGAIN:
+						// no more data to be ready
+						// ignore this error
+						break;
+					default:
+						dropConnection = true;
+						error("networking: error reading socket: %s", strerror(errno));
+						break;
+				}
+			} else if (tmp == 0) {
+				debug("networking: connection ended");
 
-		if (tmp < 0) {
-			switch(errno) {
-				case EAGAIN:
-					// no more data to be ready
-					// ignore this error
-					break;
-				default:
-					dropConnection = true;
-					error("networking: error reading socket: %s", strerror(errno));
-					break;
-			}
-		} else if (tmp == 0) {
-			debug("networking: connection ended");
-
-			buffer[length] = '\0';
-			debug("networking: buffer: '%s'", buffer);
-			dropConnection = true;
-		}
-		if (length > 0) {
-			if (dumpHeaderBuffer(&(buffer[0]), length, connection) < 0) {
+				buffer[length] = '\0';
+				debug("networking: buffer: '%s'", buffer);
 				dropConnection = true;
+			}
+			if (length > 0) {
+				if (dumpHeaderBuffer(&(buffer[0]), length, connection) < 0) {
+					dropConnection = true;
+				}
 			}
 		}
 

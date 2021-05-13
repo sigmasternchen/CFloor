@@ -25,7 +25,6 @@ The consequence is a very slim memory footprint.
 - All settings can be specified via a config file.
 
 Features yet to implement:
-- Keep-Alive
 - Full SSL-certificate-chain
 - Dynamic mods (handlers, ...)
 

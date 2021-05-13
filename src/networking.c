@@ -308,6 +308,8 @@ void safeEndConnection(struct connection* connection, bool force) {
 // TODO: Look into how self can be joined
 // (because this function will be called in response or encoder thread)
 void resetPersistentConnection(struct connection* connection) {
+		debug("networking: resetting persistent connection to initial state");
+
 		pthread_t self = pthread_self();
 		
 		// kill request thread so that the connection doesn't get killed
@@ -322,9 +324,7 @@ void resetPersistentConnection(struct connection* connection) {
 		// wait for encoder
 		if (connection->threads.encoder != PTHREAD_NULL) {
 			// if caller is encoder stopThread will to nothing
-			debug("stopping encoder thread");
 			stopThread(self, &(connection->threads.encoder), false);
-			debug("stopped encoder thread");
 		}
 		
 		// free request specific data
@@ -400,7 +400,7 @@ void* chunkedTransferEncodingThread(void* _data) {
 		chunks++;
 	}
 	
-	debug("networking: chunked transfer encoding: %lld bytes send in %lld chunks", total, chunks);
+	debug("networking: chunked transfer encoding: %lld bytes sent in %lld chunks", total, chunks);
 	
 	if (0 == tmp) {
 		// send last chunk flag
@@ -480,9 +480,13 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 	bool chunkedTransferEncoding = false;
 	
 	if (connection->isPersistent) {
+		debug("networking: this connection is persistent");
+		
 		headers_mod(headers, "Connection", "keep-alive");
 		
 		if (headers_get(headers, "Content-Length") == NULL) {
+			debug("networking: this response is chunked");
+		
 			headers_mod(headers, "Transfer-Encoding", "chunked");
 			chunkedTransferEncoding = true;
 		}
@@ -754,9 +758,9 @@ void dataHandler(int signo) {
 								// HTTP 1.1 uses persistent connections unless specified otherwise
 								connection->isPersistent = true;
 							}
-						} else if (strcasecmp(connectionHeader, "close")) {
+						} else if (strcasecmp(connectionHeader, "close") == 0) {
 							connection->isPersistent = false;
-						} else if (strcasecmp(connectionHeader, "keep-alive")) {
+						} else if (strcasecmp(connectionHeader, "keep-alive") == 0) {
 							connection->isPersistent = true;
 						}
 						

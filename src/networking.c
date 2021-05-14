@@ -243,7 +243,8 @@ void setSIGIO(int fd, bool enable) {
 }
 
 int dumpHeaderBuffer(char* buffer, size_t size, struct connection* connection) {
-	if (connection->currentHeaderLength == 0) {
+	if (connection->currentHeader == NULL) {
+		connection->currentHeaderLength = 0;
 		connection->currentHeader = malloc(size + 1);
 		if (connection->currentHeader == NULL) {
 			error("networking: couldn't allocate memory for header: %s", strerror(errno));
@@ -342,8 +343,6 @@ void resetPersistentConnection(struct connection* connection) {
 			free(connection->currentHeader);
 			connection->currentHeader = NULL;
 		}
-		
-		connection->currentHeaderLength = 0;
 
 		headers_free(&(connection->headers));
 		
@@ -472,6 +471,8 @@ int sendHeader(int statusCode, struct headers* headers, struct request* request)
 	debug("networking: sending headers");
 	
 	struct connection* connection = (struct connection*) request->_private;
+	
+	debug("before headers: %d", connection->currentHeaderLength);
 
 	struct headers defaultHeaders = networkingConfig.defaultHeaders;
 
@@ -582,6 +583,7 @@ void* responseThread(void* data) {
 	struct connection* connection = (struct connection*) data;
 
 	debug("networking: calling response handler");
+	
 
 	if (connection->isPersistent) {
 		pthread_mutex_init(&connection->resetOkay, NULL);
@@ -659,6 +661,7 @@ void* requestThread(void* data) {
 		return NULL;
 	}
 
+
 	debug("networking: going to sleep");
 	// TODO set timeout via config
 	sleep(30);
@@ -722,9 +725,11 @@ void dataHandler(int signo) {
 		char buffer[BUFFER_LENGTH];
 		size_t length = 0;
 		bool dropConnection = false;
+		bool handlerStarted = false;
 		char last = 0;
-		if (connection->currentHeaderLength > 0)
+		if (connection->currentHeaderLength > 0) {
 			last = connection->currentHeader[connection->currentHeaderLength - 1];
+		}
 		while((tmp = read(connection->readfd, &c, 1)) > 0) {
 			if (last == '\r' && c == '\n') {
 				if (dumpHeaderBuffer(&(buffer[0]), length, connection) < 0) {
@@ -736,11 +741,17 @@ void dataHandler(int signo) {
 				connection->currentHeaderLength--;
 				connection->currentHeader[connection->currentHeaderLength] = '\0';
 
+				// tmp is local to this block
+				// shouldn't overwrite the return value of read
+				// TODO: find better variable names
 				int tmp;
 
 				updateTiming(connection, false);
 
-				if (connection->metaData.path == NULL) {
+				if (connection->metaData.path == NULL) {	
+					// protocol line
+				
+					// tmp is local and can't cause problems after break
 					tmp = headers_metadata(&(connection->metaData), connection->currentHeader);
 					if (tmp == HEADERS_ALLOC_ERROR) {
 						error("networking: couldn't allocate memory for meta data: %s", strerror(errno));
@@ -754,8 +765,12 @@ void dataHandler(int signo) {
 						break;
 					}
 				} else {
+					// header line
+				
+					// tmp is local and can't cause problems after break
 					tmp = headers_parse(&(connection->headers), connection->currentHeader, connection->currentHeaderLength);
-					if (tmp == HEADERS_END) {						
+					if (tmp == HEADERS_END) {
+						connection->currentHeaderLength = 0;			
 						free(connection->currentHeader);
 						connection->currentHeader = NULL;
 
@@ -783,11 +798,13 @@ void dataHandler(int signo) {
 						} else {
 							connection->state = PROCESSING;
 						}
-						connection->inUse++;
 						pthread_mutex_unlock(&(connection->lock));
 						
 						updateTiming(connection, true);
 						startRequestHandler(connection);
+						
+						handlerStarted = true;
+						
 						break;
 					} else if (tmp == HEADERS_ALLOC_ERROR) {
 						error("networking: couldn't allocate memory for header: %s", strerror(errno));
@@ -823,32 +840,34 @@ void dataHandler(int signo) {
 			last = c;
 		}
 		
-		if (!dropConnection) {
-			// only check read return value (tmp) if the connection shouldn't be dropped
-			// because tmp might be set before a break
+		if (handlerStarted) {
+			// skip the rest
+			// no need to decrement inUse counter
+			// since the handler is started
+			continue;
+		}
 		
-			if (tmp < 0) {
-				switch(errno) {
-					case EAGAIN:
-						// no more data to be ready
-						// ignore this error
-						break;
-					default:
-						dropConnection = true;
-						error("networking: error reading socket: %s", strerror(errno));
-						break;
-				}
-			} else if (tmp == 0) {
-				debug("networking: connection ended");
-
-				buffer[length] = '\0';
-				debug("networking: buffer: '%s'", buffer);
-				dropConnection = true;
-			}
-			if (length > 0) {
-				if (dumpHeaderBuffer(&(buffer[0]), length, connection) < 0) {
+		if (tmp < 0) {
+			switch(errno) {
+				case EAGAIN:
+					// no more data to be ready
+					// ignore this error
+					break;
+				default:
 					dropConnection = true;
-				}
+					error("networking: error reading socket: %s", strerror(errno));
+					break;
+			}
+		} else if (tmp == 0) {
+			debug("networking: connection ended");
+
+			buffer[length] = '\0';
+			debug("networking: buffer: '%s'", buffer);
+			dropConnection = true;
+		}
+		if (length > 0) {
+			if (dumpHeaderBuffer(&(buffer[0]), length, connection) < 0) {
+				dropConnection = true;
 			}
 		}
 

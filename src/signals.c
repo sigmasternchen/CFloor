@@ -39,6 +39,15 @@ int signal_allow(int signo) {
 	return pthread_sigmask(SIG_UNBLOCK, &mask, NULL);
 }
 
+int signal_wait(int signo) {
+	sigset_t mask;
+	sigemptyset(&mask);
+	sigaddset(&mask, signo);
+	
+	int _;
+	return sigwait(&mask, &_);
+}
+
 static void timerHandler(union sigval target) {
 	((void (*)(void))(target.sival_ptr))();
 }

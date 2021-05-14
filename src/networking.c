@@ -54,8 +54,6 @@ linkedList_t connectionList;
 
 linkedList_t connectionsToFree;
 void cleanup() {
-	signal_block_all();
-
 	link_t* link = linked_first(&connectionList);
 
 	int length = 0;
@@ -629,8 +627,6 @@ void* responseThread(void* data) {
 void* requestThread(void* data) {
 	struct connection* connection = (struct connection*) data;
 
-	signal_block_all();
-
 	struct handler handler = networkingConfig.getHandler(connection->metaData, headers_get(&(connection->headers), "Host"), connection->bind);
 
 	if (handler.handler == NULL) {
@@ -692,7 +688,7 @@ void startRequestHandler(struct connection* connection) {
 
 pthread_t dataThreadId;
 
-void dataHandler(int signo) {
+void dataHandler() {
 	pthread_t self = pthread_self();
 
 	debug("networking: data handler got called.");
@@ -868,6 +864,7 @@ void dataHandler(int signo) {
 		// if the connection ends (tmp == 0)
 		// the connection has to be dropped to free resources before the timeout
 		if (dropConnection) {
+			connection->currentHeaderLength = 0;
 			if (connection->currentHeader != NULL)
 				free(connection->currentHeader);
 			connection->currentHeader = NULL;
@@ -886,19 +883,17 @@ void dataHandler(int signo) {
 	}
 }
 void* dataThread(void* ignore) {
-	signal_block_all();
-	signal_allow(SIGIO);
-
-	signal_setup(SIGIO, &dataHandler);
-
 	while(true) {
-		sleep(0xffff);
+		if (signal_wait(SIGIO) != 0) {
+			error("networking: data thread: sigwait: %s", strerror(errno));
+			debug("networking: data thread: waiting 1s");
+			sleep(1);
+		}
+		dataHandler();
 	}
 }
 
 void* listenThread(void* _bind) {
-	signal_block_all();
-
 	struct bind* bindObj = (struct bind*) _bind;
 
 	info("networking: Starting to listen on %s:%s", bindObj->address, bindObj->port);
@@ -1127,13 +1122,27 @@ void* listenThread(void* _bind) {
 	}
 }
 
+void cleanupThread() {
+	while(true) {
+		if (signal_wait(SIGALRM) != 0) {
+			error("networking: clean up thread: sigwait: %s", strerror(errno));
+			debug("networking: clean up thread: waiting 1s");
+			sleep(1);
+		}
+		cleanup();
+	}
+}
+
 void networking_init(struct networkingConfig _networkingConfig) {
 	networkingConfig = _networkingConfig;
 
 	connectionList = linked_create();
 	connectionsToFree = linked_create();
 
-	timer_t timer = timer_createThreadTimer(&cleanup);
+	signal_block(SIGIO);
+	signal_block(SIGALRM);
+
+	timer_t timer = timer_createSignalTimer(SIGALRM);
 	if (timer == NULL) {
 		critical("networking: Couldn't create cleaup timer.");
 		return;
@@ -1147,9 +1156,6 @@ void networking_init(struct networkingConfig _networkingConfig) {
 		critical("networking: Couldn't start data thread.");
 		return;
 	}
-
-	signal_block(SIGIO);
-	signal_block(SIGALRM);
 
 	for(int i = 0; i < networkingConfig.binds.number; i++) {
 		struct bind* bind = &(networkingConfig.binds.binds[i]);

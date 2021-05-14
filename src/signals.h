@@ -8,6 +8,7 @@ int signal_block_all();
 int signal_allow_all();
 int signal_block(int signo);
 int signal_allow(int signo);
+int signal_wait(int signo);
 
 timer_t timer_createThreadTimer(void (*handler)());
 timer_t timer_createSignalTimer(int signo);

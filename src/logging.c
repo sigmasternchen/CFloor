@@ -7,6 +7,10 @@
 #include <assert.h>
 #include <semaphore.h>
 
+#ifdef DEBUG
+#include <pthread.h>
+#endif
+
 #include "logging.h"
 #include "util.h"
 
@@ -186,6 +190,9 @@ void vlogging(loglevel_t loglevel, const char* format, va_list argptr) {
 		sem_wait(&(logger[i].write_sem));
 
 		fprintf(logger[i].file, "%s %s ", timestamp, loglevelString);
+		#ifdef DEBUG
+		fprintf(logger[i].file, "[%ld] ", pthread_self());
+		#endif
 		vfprintf(logger[i].file, format, local);
 		fprintf(logger[i].file, "\n");
 

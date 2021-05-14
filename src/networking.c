@@ -1122,7 +1122,7 @@ void* listenThread(void* _bind) {
 	}
 }
 
-void cleanupThread() {
+void* cleanupThread(void* _) {
 	while(true) {
 		if (signal_wait(SIGALRM) != 0) {
 			error("networking: clean up thread: sigwait: %s", strerror(errno));
@@ -1141,6 +1141,14 @@ void networking_init(struct networkingConfig _networkingConfig) {
 
 	signal_block(SIGIO);
 	signal_block(SIGALRM);
+	
+	// in case a pipe breaks
+	signal_block(SIGPIPE);
+
+	if (pthread_create(&dataThreadId, NULL, &cleanupThread, NULL) != 0) {
+		critical("networking: Couldn't start data thread.");
+		return;
+	}
 
 	timer_t timer = timer_createSignalTimer(SIGALRM);
 	if (timer == NULL) {

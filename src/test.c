@@ -10,6 +10,10 @@
 #include <time.h>
 #include <pthread.h>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/wait.h>
+
 #include "networking.h"
 #include "linked.h"
 #include "logging.h"
@@ -312,6 +316,153 @@ void testConfig() {
 	config_destroy(config);
 }
 
+#define LOCAL_PORT (1337)
+#define LOCAL_PORT_STRING ("1337")
+
+struct {
+	handler_t handler;
+	struct bind bind;
+	int pid;
+} serverdata = {
+	.bind = {
+		.address = "127.0.0.1",
+		.port = LOCAL_PORT_STRING,
+		.ssl = false
+	},
+	.pid = 0
+};
+
+void stopWebserver() {
+	if (serverdata.pid != 0) {
+		kill(serverdata.pid, SIGTERM);
+		int tmp;
+		wait(&tmp);
+	}
+}
+
+struct handler handlerGetter(struct metaData metaData, const char* host, struct bind* bind) {
+	return (struct handler) {
+		.handler = serverdata.handler
+	};
+}
+
+
+void startWebserver(handler_t handler) {
+	serverdata.handler = handler;
+	
+	struct headers headers = headers_create();
+	headers_mod(&headers, "Server", "CShore 0.1");
+	struct networkingConfig netConfig = (struct networkingConfig) {
+		binds: {
+			number: 1,
+			binds: &serverdata.bind 
+		},
+		connectionTimeout: DEFAULT_CONNECTION_TIMEOUT,
+		maxConnections: DEFAULT_MAX_CONNECTIONS,
+		defaultHeaders: headers,
+		getHandler: handlerGetter
+	};
+	
+	serverdata.pid = fork();
+	
+	if (serverdata.pid == 0) {
+		networking_init(netConfig);
+	} else if (serverdata.pid < 0) {
+		printf("PANIC!\n");
+		exit(1);
+	}
+	
+	usleep(100000);
+}
+
+FILE* sendRequest(FILE* stream, enum protocol procotol, enum method method, const char* uri, struct headers headers) {
+	if (stream == NULL) {
+		int sfd = socket(AF_INET, SOCK_STREAM, 0);
+		struct in_addr addr;
+		inet_aton("127.0.0.1", &addr);
+		struct sockaddr_in sockaddr = {
+			.sin_family = AF_INET,
+			.sin_port = LOCAL_PORT,
+			.sin_addr = addr
+		};
+		int fd = connect(sfd, &sockaddr, sizeof(struct sockaddr_in));
+		stream = fdopen(fd, "rw");
+	}
+	
+	const char* protocolString = "HTTP/1.0";
+	if (procotol == HTTP11)
+		protocolString = "HTTP/1.1";
+		
+	const char* methodString = "GET";
+	switch(method) {
+		case GET:
+			methodString = "GET";
+			break;
+		case HEAD:
+			methodString = "HEAD";
+			break;
+		case POST:
+			methodString = "POST";
+			break;
+		case PUT:
+			methodString = "PUT";
+			break;
+		case DELETE:
+			methodString = "DELETE";
+			break;
+		case CONNECT:
+			methodString = "CONNECT";
+			break;
+		case OPTIONS:
+			methodString = "OPTIONS";
+			break;
+		case TRACE:
+			methodString = "TRACE";
+			break;
+		case PATCH:
+			methodString = "PATCH";
+			break;
+		default:
+			break;
+	}
+	
+	fprintf(stream, "%s %s %s\r\n", methodString, uri, protocolString);
+	headers_dump(&headers, stream);
+	headers_free(&headers);
+	fprintf(stream, "\r\n");
+	
+	return stream;
+}
+
+#define BUFFER_SIZE (1024)
+char buffer[BUFFER_SIZE];
+
+const char* readline(FILE* stream) {
+	fgets(&(buffer[0]), BUFFER_SIZE, stream);
+	return buffer;
+}
+
+void testHandler1(struct request request, struct response response) {
+	struct headers headers = headers_create();
+	headers_mod(&headers, "Content-Length", "0");
+	int fd = response.sendHeader(200, &headers, &request);
+	headers_free(&headers);
+	close(fd);
+}
+
+void testIntegration() {
+	startWebserver(&testHandler1);
+	
+	FILE* stream = sendRequest(NULL, HTTP10, GET, "/", headers_create());
+	printf("%s\n", readline(stream));
+	printf("%s\n", readline(stream));
+	printf("%s\n", readline(stream));
+	printf("%s\n", readline(stream));
+	fclose(stream);
+	
+	stopWebserver();
+}
+
 void test(const char* name, void (*testFunction)()) {
 	printf("%s\n", name);
 	printf("%.*s\n", (int) strlen(name), 
@@ -330,6 +481,7 @@ int main(int argc, char** argv) {
 	test("signals", &testTimers);
 	test("headers", &testHeaders);
 	test("logging", &testLogging);
+	test("integration", &testIntegration);
 
 
 	printf("\nOverall: %s\n", overall ? "OK" : "FAILED");

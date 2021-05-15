@@ -334,9 +334,11 @@ struct {
 
 void stopWebserver() {
 	if (serverdata.pid != 0) {
+		printf("stopping webserver...\n");
 		kill(serverdata.pid, SIGTERM);
 		int tmp;
 		wait(&tmp);
+		printf("webserver stopped.\n");
 	}
 }
 
@@ -348,10 +350,12 @@ struct handler handlerGetter(struct metaData metaData, const char* host, struct 
 
 
 void startWebserver(handler_t handler) {
+	printf("starting webserver...\n");
+	
 	serverdata.handler = handler;
 	
 	struct headers headers = headers_create();
-	headers_mod(&headers, "Server", "CShore 0.1");
+	headers_mod(&headers, "Server", "Test");
 	struct networkingConfig netConfig = (struct networkingConfig) {
 		binds: {
 			number: 1,
@@ -367,26 +371,42 @@ void startWebserver(handler_t handler) {
 	
 	if (serverdata.pid == 0) {
 		networking_init(netConfig);
+		printf("webserver started.\n");
+		while(true) {
+			sleep(0xffff);
+		}
+		exit(0);
 	} else if (serverdata.pid < 0) {
 		printf("PANIC!\n");
 		exit(1);
 	}
 	
-	usleep(100000);
+	usleep(200000);
 }
 
 FILE* sendRequest(FILE* stream, enum protocol procotol, enum method method, const char* uri, struct headers headers) {
 	if (stream == NULL) {
 		int sfd = socket(AF_INET, SOCK_STREAM, 0);
-		struct in_addr addr;
-		inet_aton("127.0.0.1", &addr);
 		struct sockaddr_in sockaddr = {
 			.sin_family = AF_INET,
-			.sin_port = LOCAL_PORT,
-			.sin_addr = addr
+			.sin_port = htons(LOCAL_PORT)
 		};
+		if (inet_pton(AF_INET, "127.0.0.1", &sockaddr.sin_addr) < 0) {
+			printf("PANIC: %s\n", strerror(errno));
+			exit(1);
+		}
 		int fd = connect(sfd, &sockaddr, sizeof(struct sockaddr_in));
+		if (fd < 0) {
+			printf("PANIC: %s\n", strerror(errno));
+			exit(1);		
+		}
+		
 		stream = fdopen(fd, "rw");
+		
+		if (stream == NULL) {
+			printf("PANIC: %s\n", strerror(errno));
+			exit(1);
+		}
 	}
 	
 	const char* protocolString = "HTTP/1.0";
@@ -454,10 +474,9 @@ void testIntegration() {
 	startWebserver(&testHandler1);
 	
 	FILE* stream = sendRequest(NULL, HTTP10, GET, "/", headers_create());
+	
 	printf("%s\n", readline(stream));
-	printf("%s\n", readline(stream));
-	printf("%s\n", readline(stream));
-	printf("%s\n", readline(stream));
+	
 	fclose(stream);
 	
 	stopWebserver();
@@ -475,6 +494,8 @@ void test(const char* name, void (*testFunction)()) {
 }
 
 int main(int argc, char** argv) {
+	atexit(stopWebserver);
+
 	test("config", &testConfig);
 	test("util", &testUtil);
 	test("linked lists", &testLinkedList);

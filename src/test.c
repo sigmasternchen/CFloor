@@ -545,7 +545,7 @@ void testHandler1(struct request request, struct response response) {
 	close(fd);
 }
 
-void testIntegration() {
+void testPersistence() {
 	struct headers headers;
 	char* tmp;
 	int status;
@@ -553,18 +553,122 @@ void testIntegration() {
 
 	startWebserver(&testHandler1);
 	
+	// this is a HTTP/1.0 connection
+	// we have not specified that this is a persistent connection
+	// we expect to get informed about that (not strictly standard but good manners)
+	printf("testing HTTP/1.0 connection without Connection header...\n\n");
 	stream = sendRequest(NULL, HTTP10, GET, "/", headers_create());
 	
 	status = readStatus(stream, NULL);
 	checkInt(status, 200, "status code okay");
 	headers = readHeaders(stream);
 	
-	// this is a HTTP/1.0 connection
-	// we have not specified that this is a persistent connection
-	// we expect to get informed about that (not strictly standard but good manners)
 	tmp = (char*) headers_get(&headers, "Connection");
 	checkNull(tmp, "Connection header present");
 	checkString(tmp, "close", "Connection header ok");
+	
+	tmp = (char*) headers_get(&headers, "Content-Length");
+	checkNull(tmp, "Content-Length header present");
+	checkString(tmp, "0", "Content-Length header ok");
+
+	headers_free(&headers);
+	fclose(stream);
+	
+	// this is a HTTP/1.0 connection
+	// we set the Connection header to keep-alive
+	printf("testing HTTP/1.0 connection with Connection header...\n\n");
+	headers = headers_create();
+	headers_mod(&headers, "Connection", "keep-alive");
+	stream = sendRequest(NULL, HTTP10, GET, "/", headers);
+	
+	status = readStatus(stream, NULL);
+	checkInt(status, 200, "status code okay");
+	headers = readHeaders(stream);
+	
+	tmp = (char*) headers_get(&headers, "Connection");
+	checkNull(tmp, "Connection header present");
+	checkString(tmp, "keep-alive", "Connection header ok");
+	
+	tmp = (char*) headers_get(&headers, "Content-Length");
+	checkNull(tmp, "Content-Length header present");
+	checkString(tmp, "0", "Content-Length header ok");
+
+	headers_free(&headers);
+	fclose(stream);
+	
+	// this is a HTTP/1.1 connection
+	// we haven't specified that this connection is persistent
+	// the server is expected to keep the connection alive
+	printf("testing HTTP/1.1 connection without Connection header...\n\n");
+	stream = sendRequest(NULL, HTTP11, GET, "/", headers_create());
+	
+	status = readStatus(stream, NULL);
+	checkInt(status, 200, "status code okay");
+	headers = readHeaders(stream);
+	
+	tmp = (char*) headers_get(&headers, "Connection");
+	checkNull(tmp, "Connection header present");
+	checkString(tmp, "keep-alive", "Connection header ok");
+	
+	tmp = (char*) headers_get(&headers, "Content-Length");
+	checkNull(tmp, "Content-Length header present");
+	checkString(tmp, "0", "Content-Length header ok");
+
+	headers_free(&headers);
+	fclose(stream);
+	
+	// this is a HTTP/1.1 connection
+	// we set the connection header to close
+	// the server is expected to reply with connection close
+	printf("testing HTTP/1.1 connection with Connection header...\n\n");
+	headers = headers_create();
+	headers_mod(&headers, "Connection", "close");
+	stream = sendRequest(NULL, HTTP11, GET, "/", headers);
+	
+	status = readStatus(stream, NULL);
+	checkInt(status, 200, "status code okay");
+	headers = readHeaders(stream);
+	
+	tmp = (char*) headers_get(&headers, "Connection");
+	checkNull(tmp, "Connection header present");
+	checkString(tmp, "close", "Connection header ok");
+	
+	tmp = (char*) headers_get(&headers, "Content-Length");
+	checkNull(tmp, "Content-Length header present");
+	checkString(tmp, "0", "Content-Length header ok");
+
+	headers_free(&headers);
+	fclose(stream);
+	
+	// this is a HTTP/1.1 connection
+	// let's try sending multiple requests in the same connection
+	printf("testing HTTP/1.1 connection with multiple requests...\n\n");
+	stream = sendRequest(NULL, HTTP11, GET, "/", headers_create());
+	
+	status = readStatus(stream, NULL);
+	checkInt(status, 200, "status code okay");
+	headers = readHeaders(stream);
+	
+	tmp = (char*) headers_get(&headers, "Connection");
+	checkNull(tmp, "Connection header present");
+	checkString(tmp, "keep-alive", "Connection header ok");
+	
+	tmp = (char*) headers_get(&headers, "Content-Length");
+	checkNull(tmp, "Content-Length header present");
+	checkString(tmp, "0", "Content-Length header ok");
+
+	headers_free(&headers);
+	
+	printf("testing second request...\n");
+	stream = sendRequest(stream, HTTP11, GET, "/", headers_create());
+	
+	status = readStatus(stream, NULL);
+	checkInt(status, 200, "status code okay");
+	headers = readHeaders(stream);
+	
+	tmp = (char*) headers_get(&headers, "Connection");
+	checkNull(tmp, "Connection header present");
+	checkString(tmp, "keep-alive", "Connection header ok");
 	
 	tmp = (char*) headers_get(&headers, "Content-Length");
 	checkNull(tmp, "Content-Length header present");
@@ -587,8 +691,17 @@ void test(const char* name, void (*testFunction)()) {
 	global = true;
 }
 
+void header(const char* text) {
+	printf("\n");
+	printf("=======================================\n");
+	printf("== %s\n", text);
+	printf("=======================================\n");
+}
+
 int main(int argc, char** argv) {
 	atexit(stopWebserver);
+
+	header("Unit Tests");
 
 	test("config", &testConfig);
 	test("util", &testUtil);
@@ -596,7 +709,10 @@ int main(int argc, char** argv) {
 	test("signals", &testTimers);
 	test("headers", &testHeaders);
 	test("logging", &testLogging);
-	test("integration", &testIntegration);
+	
+	header("Integeration Tests");
+	
+	test("persistent connections", &testPersistence);
 
 
 	printf("\nOverall: %s\n", overall ? "OK" : "FAILED");

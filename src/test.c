@@ -339,6 +339,7 @@ void stopWebserver() {
 		int tmp;
 		wait(&tmp);
 		printf("webserver stopped.\n");
+		serverdata.pid = 0;
 	}
 }
 
@@ -456,11 +457,85 @@ FILE* sendRequest(FILE* stream, enum protocol procotol, enum method method, cons
 #define BUFFER_SIZE (1024)
 char buffer[BUFFER_SIZE];
 
-const char* readline(FILE* stream) {
+char* readline(FILE* stream) {
 	fgets(&(buffer[0]), BUFFER_SIZE, stream);
 	return buffer;
 }
 
+int readStatus(FILE* stream, enum protocol* protocol) {
+	char* line = readline(stream);
+	
+	char* protocolString = line;
+	char* statusString = NULL;
+	
+	size_t len = strlen(line);
+	for (size_t i = 0; i < len; i++) {
+		if (line[i] == ' ') {
+			line[i] = '\0';
+			if (statusString == NULL) {
+				statusString = line + i + 1;
+			}
+		}
+	}
+
+	checkNull(statusString, "status line readable");
+	
+	bool valid = true;
+	if (strcmp(protocolString, "HTTP/1.0") == 0) {
+		if (protocol != NULL) {
+			*protocol = HTTP10;
+		}
+	} else if (strcmp(protocolString, "HTTP/1.1") == 0) {
+		if (protocol != NULL) {
+			*protocol = HTTP11;
+		}
+	} else {
+		valid = false;
+		printf("protocol: %s\n", protocolString);
+	}
+	checkBool(valid, "protocol version parseable");
+	
+	valid = true;
+	char* endptr;
+	int status = strtol(statusString, &endptr, 10);
+	if (*endptr != '\0') {
+		valid = false;
+		printf("status: %s\n", statusString);
+	}
+	checkBool(valid, "status code parseable");
+	
+	return status;
+}
+
+struct headers readHeaders(FILE* stream) {
+	struct headers headers = headers_create();
+
+	bool error = false;
+	while(true) {
+		char* line = readline(stream);
+		if (strcmp(line, "\r\n") == 0) {
+			break;
+		}
+		
+		size_t len = strlen(line);
+		for (size_t i = 0; i < len; i++) {
+			if (line[i] == '\r' || line[i] == '\n') {
+				len = i;
+				line[i] = '\0';
+				break;
+			}
+		}
+		
+		if (headers_parse(&headers, line, len) < 0) {
+			printf("header: %s\n", line);
+			error = true;
+		}
+	}
+	
+	checkBool(!error, "headers valid");
+	
+	return headers;
+}
 
 void testHandler1(struct request request, struct response response) {
 	struct headers headers = headers_create();
@@ -471,12 +546,31 @@ void testHandler1(struct request request, struct response response) {
 }
 
 void testIntegration() {
+	struct headers headers;
+	char* tmp;
+	int status;
+	FILE* stream;
+
 	startWebserver(&testHandler1);
 	
-	FILE* stream = sendRequest(NULL, HTTP10, GET, "/", headers_create());
-
-	printf("%s\n", readline(stream));
+	stream = sendRequest(NULL, HTTP10, GET, "/", headers_create());
 	
+	status = readStatus(stream, NULL);
+	checkInt(status, 200, "status code okay");
+	headers = readHeaders(stream);
+	
+	// this is a HTTP/1.0 connection
+	// we have not specified that this is a persistent connection
+	// we expect to get informed about that (not strictly standard but good manners)
+	tmp = (char*) headers_get(&headers, "Connection");
+	checkNull(tmp, "Connection header present");
+	checkString(tmp, "close", "Connection header ok");
+	
+	tmp = (char*) headers_get(&headers, "Content-Length");
+	checkNull(tmp, "Content-Length header present");
+	checkString(tmp, "0", "Content-Length header ok");
+
+	headers_free(&headers);
 	fclose(stream);
 	
 	stopWebserver();

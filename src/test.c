@@ -386,7 +386,7 @@ void startWebserver(handler_t handler) {
 
 FILE* sendRequest(FILE* stream, enum protocol procotol, enum method method, const char* uri, struct headers headers) {
 	if (stream == NULL) {
-		int sfd = socket(AF_INET, SOCK_STREAM, 0);
+		int fd = socket(AF_INET, SOCK_STREAM, 0);
 		struct sockaddr_in sockaddr = {
 			.sin_family = AF_INET,
 			.sin_port = htons(LOCAL_PORT)
@@ -395,13 +395,12 @@ FILE* sendRequest(FILE* stream, enum protocol procotol, enum method method, cons
 			printf("PANIC: %s\n", strerror(errno));
 			exit(1);
 		}
-		int fd = connect(sfd, &sockaddr, sizeof(struct sockaddr_in));
-		if (fd < 0) {
+		if (connect(fd, &sockaddr, sizeof(struct sockaddr_in)) < 0) {
 			printf("PANIC: %s\n", strerror(errno));
 			exit(1);		
 		}
 		
-		stream = fdopen(fd, "rw");
+		stream = fdopen(fd, "w+");
 		
 		if (stream == NULL) {
 			printf("PANIC: %s\n", strerror(errno));
@@ -462,6 +461,7 @@ const char* readline(FILE* stream) {
 	return buffer;
 }
 
+
 void testHandler1(struct request request, struct response response) {
 	struct headers headers = headers_create();
 	headers_mod(&headers, "Content-Length", "0");
@@ -474,7 +474,7 @@ void testIntegration() {
 	startWebserver(&testHandler1);
 	
 	FILE* stream = sendRequest(NULL, HTTP10, GET, "/", headers_create());
-	
+
 	printf("%s\n", readline(stream));
 	
 	fclose(stream);
